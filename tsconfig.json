@@ -1,0 +1,16 @@
+{
+    "compilerOptions": {
+        "target": "ES5",
+        "module": "commonjs",
+        "noImplicitAny": true,
+        "suppressImplicitAnyIndexErrors": true,
+        "sourceMap": true,
+        "declaration": true,
+        "stripInternal": true,
+        "out": "built/async-context.js"
+    },
+    "files": [
+        "submodules/es6-promise.d.ts",
+        "sources/async-context.ts"
+    ]
+}

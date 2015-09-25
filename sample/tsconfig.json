@@ -1,0 +1,13 @@
+{
+    "compilerOptions": {
+        "target": "ES5",
+        "module": "commonjs",
+        "noImplicitAny": true,
+        "sourceMap": true
+    },
+    "files": [
+        "../submodules/es6-promise.d.ts",
+        "../built/async-context.d.ts",
+        "test.ts"
+    ]
+}
