@@ -106,6 +106,7 @@ module AsyncChainer {
 	
 	export class AsyncContext<T> {
 		constructor(callback: (context: AsyncContext<T>) => any) {
+			this[queueKey] = [];
 			this[feederKey] = new AsyncFeed((resolve, reject) => {
 				this[resolveFeederKey] = resolve;
 				this[rejectFeederKey] = reject;
