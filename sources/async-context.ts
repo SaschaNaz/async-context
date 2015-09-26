@@ -17,6 +17,7 @@ module AsyncChainer {
     let modifiableKey = generateSymbolKey("modifiable");
 	let revertKey = generateSymbolKey("revert");
 	let canceledKey = generateSymbolKey("canceled");
+	let thisKey = generateSymbolKey("this");
 
 	/*
 		Keys for AsyncContext
@@ -44,11 +45,7 @@ module AsyncChainer {
 		
 		constructor(init: (resolve: (value?: T | Thenable<T>) => void, reject: (reason?: any) => void) => void, options: ContractOptionBag = {}) {
 			let {revert} = options;
-			this[revertKey] = revert;
-			this[modifiableKey] = true;
-			this[canceledKey] = false;
-			
-			super((resolve, reject) => {
+			let listener = (resolve : (value?: T | Thenable<T>) => void, reject: (error?: any) => void) => {
 				this[resolveKey] = resolve; 
 				init(
 					(value) => {
@@ -72,7 +69,20 @@ module AsyncChainer {
 						reject(error);
 					}
 				)
-			});
+			};
+			
+			var newThis = window.SubclassJ ? SubclassJ.getNewThis(Contract, Promise, [listener]) : this;
+			if (!window.SubclassJ) {
+				super(listener);
+			}
+			
+			newThis[resolveKey] = this[resolveKey];
+			newThis[revertKey] = this[revertKey] = revert;
+			newThis[modifiableKey] = this[modifiableKey] = true;
+			newThis[canceledKey] =  this[canceledKey] = false;
+			
+			return newThis;
+			//super(listener);
 		}
 		
 		// This is blocking destructuring, any solution?
@@ -169,8 +179,13 @@ module AsyncChainer {
 			if (!(options.context instanceof AsyncContext)) {
 				throw new Error("An AsyncContext object must be given by `options.context`.");
 			}
-			super(init, options);
-			this[contextKey] = options.context;
+			let newThis = window.SubclassJ ? SubclassJ.getNewThis(AsyncQueueItem, Contract, [init, options]) : this;
+			if (!window.SubclassJ) {
+				super(init, options);
+			}
+			
+			newThis[contextKey] = this[contextKey] = options.context;
+			return newThis;
 		}
 		
 		then<U>(onfulfilled?: (value: T) => U | Thenable<U>, options: ContractOptionBag = {}) {
@@ -223,6 +238,13 @@ module AsyncChainer {
 	
 	// better name? this can be used when a single contract only is needed
 	export class AsyncFeed<T> extends Contract<T> {
+		constructor(init: (resolve: (value?: T | Thenable<T>) => void, reject: (reason?: any) => void) => void, options: ContractOptionBag = {}) {
+			let newThis = window.SubclassJ ? SubclassJ.getNewThis(AsyncFeed, Contract, [init, options]) : this;
+			if (!window.SubclassJ) {
+				super(init, options);
+			}
+			return newThis;
+		}
 		cancel() {
 			this[cancelKey]();
 		}
