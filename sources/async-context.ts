@@ -107,11 +107,14 @@ module AsyncChainer {
 	export class AsyncContext<T> {
 		constructor(callback: (context: AsyncContext<T>) => any) {
 			this[queueKey] = [];
+			this[modifiableKey] = true;
+			this[canceledKey] = false;
 			this[feederKey] = new AsyncFeed((resolve, reject) => {
 				this[resolveFeederKey] = resolve;
 				this[rejectFeederKey] = reject;
 			}, {
 				revert: () => {
+					this[modifiableKey] = false;
 					this[cancelAllKey]();
 				}
 			});
@@ -125,7 +128,7 @@ module AsyncChainer {
 			}
 		}
 		
-		queue<U>(callback: () => U | Thenable<U>, options: ContractOptionBag = {}) {
+		queue<U>(callback?: () => U | Thenable<U>, options: ContractOptionBag = {}) {
 			let promise: U | Thenable<U>
 			if (typeof callback === "function") {
 				promise = callback();
@@ -135,7 +138,7 @@ module AsyncChainer {
 				resolve(promise);
 			}, {
 				revert: () => {
-					if (typeof promise[cancelKey] === "function") {
+					if (promise && typeof promise[cancelKey] === "function") {
 						(<Contract<U>>promise)[cancelKey]();
 					}
 					this[removeFromQueueKey](output);
@@ -143,7 +146,7 @@ module AsyncChainer {
 				context: this
 			});
 			this[queueKey].push(output);
-			return <Contract<U>>output; // return an object that support chaining
+			return output; // return an object that support chaining
 		}
 		
 		[removeFromQueueKey](item: AsyncQueueItem<any>) {
@@ -159,6 +162,10 @@ module AsyncChainer {
 			return <boolean>this[feededKey];
 		}
 		
+		get canceled() {
+			return <boolean>this[canceledKey];
+		}
+		
 		resolve(value?: T): void {
 			this[feededKey] = true;
 			this[resolveFeederKey](value);
@@ -167,13 +174,19 @@ module AsyncChainer {
 			this[feededKey] = true;
 			this[rejectFeederKey](error);
 		}
+		cancel(): void {
+			this[feededKey] = true;
+			this[canceledKey] = true;
+			this[resolveFeederKey](Contract.Canceled);
+		}
 	}
 	
 	export interface AsyncQueueOptionBag extends ContractOptionBag {
 		context: AsyncContext<any>;
 	}
 	
-	class AsyncQueueItem<T> extends Contract<T> {
+	// Can chaining characteristics of AsyncQueueItem be used generally? 
+	export class AsyncQueueItem<T> extends Contract<T> {
 		get context() { return <AsyncContext<any>>this[contextKey] }
 		 
 		constructor(init: (resolve: (value?: T | Thenable<T>) => void, reject: (reason?: any) => void) => void, options: AsyncQueueOptionBag) {
@@ -193,7 +206,7 @@ module AsyncChainer {
 			let promise: U | Thenable<U>;
 			
 			
-			let output = new AsyncQueueItem((resolve, reject) => {
+			let output = new AsyncQueueItem<U>((resolve, reject) => {
 				super.then((value) => {
 					if (typeof onfulfilled === "function") {
 						promise = onfulfilled(value);
