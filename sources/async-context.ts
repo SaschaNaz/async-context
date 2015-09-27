@@ -8,6 +8,8 @@ module AsyncChainer {
         return btoa(Math.random().toFixed(16));
     }
 	
+	export var Cancellation: any = new Proxy(() => {}, { set: () => false, get: () => Cancellation, construct: () => Cancellation, apply: () => Cancellation });
+	
 	/*
 		Keys for Contract class 
 	*/
@@ -22,7 +24,6 @@ module AsyncChainer {
 	/*
 		Keys for AsyncContext
 	*/
-    let feededKey = generateSymbolKey("feeded");
     let feederKey = generateSymbolKey("feeder");
     let resolveFeederKey = generateSymbolKey("resolve-feeder");
     let rejectFeederKey = generateSymbolKey("reject-feeder");
@@ -85,11 +86,23 @@ module AsyncChainer {
 			//super(listener);
 		}
 		
-		// This is blocking destructuring, any solution?
-		// example: let [foo, bar] = await Baz();
-		// Returning Canceled object will break this code
-		 
-		static Canceled = generateSymbolKey("canceled");
+		/*
+		This is blocking destructuring, any solution?
+		example: let [foo, bar] = await Baz();
+		Returning Canceled object will break this code
+		Every code that does not expect cancellation will be broken
+		... but codes that explicitly allow it should also expect it.
+		Cancellation still is not so intuitive. What would users expect when their waiting promise be cancelled?
+		1. just do not call back - this will break ES7 await 
+		2. return Canceled object - potentially break codes; users have to check it every time
+		3. add oncanceled callback function - this also will break await 
+		
+		2-1. Can cancellation check be automated, inline?
+		let [x, y] = await cxt.queue(foo); // what can be done here?
+		Make cancellation object special: hook indexer and make them all return cancellation object
+		(await cxt.queue(foo)).bar(); // .bar will be cancellation object, and .bar() will also be.
+		
+		*/
 		
 		[cancelKey]() {
 			if (!this[modifiableKey]) {
@@ -100,25 +113,22 @@ module AsyncChainer {
 			if (this[revertKey]) {
 				this[revertKey]("canceled");
 			}
-			this[resolveKey](Contract.Canceled);
+			this[resolveKey](Cancellation);
 		}
 	}
 	
 	export class AsyncContext<T> {
 		constructor(callback: (context: AsyncContext<T>) => any) {
 			this[queueKey] = [];
-			this[modifiableKey] = true;
 			this[canceledKey] = false;
 			this[feederKey] = new AsyncFeed((resolve, reject) => {
 				this[resolveFeederKey] = resolve;
 				this[rejectFeederKey] = reject;
 			}, {
 				revert: () => {
-					this[modifiableKey] = false;
 					this[cancelAllKey]();
 				}
 			});
-			this[feededKey] = false;
 			Promise.resolve().then(() => callback(this));
 		}
 		
@@ -158,26 +168,19 @@ module AsyncChainer {
 			return <AsyncFeed<T>>this[feederKey];
 		}
 		
-		get feeded() {
-			return <boolean>this[feededKey];
-		}
-		
 		get canceled() {
 			return <boolean>this[canceledKey];
 		}
 		
 		resolve(value?: T): void {
-			this[feededKey] = true;
 			this[resolveFeederKey](value);
 		}
 		reject(error?: any): void {
-			this[feededKey] = true;
 			this[rejectFeederKey](error);
 		}
 		cancel(): void {
-			this[feededKey] = true;
 			this[canceledKey] = true;
-			this[resolveFeederKey](Contract.Canceled);
+			this[resolveFeederKey](Cancellation);
 		}
 	}
 	
@@ -204,7 +207,6 @@ module AsyncChainer {
 		
 		then<U>(onfulfilled?: (value: T) => U | Thenable<U>, options: ContractOptionBag = {}) {
 			let promise: U | Thenable<U>;
-			
 			
 			let output = new AsyncQueueItem<U>((resolve, reject) => {
 				super.then((value) => {
