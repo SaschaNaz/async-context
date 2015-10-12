@@ -1,4 +1,20 @@
 module AsyncChainer {
+	namespace util {
+		export function assign<T>(target: T, ...sources: any[]) {
+			if ((<any>Object).assign)
+				return <T>((<any>Object).assign)(target, ...sources);
+	
+			for (let source of sources) {
+				source = Object(source);
+				for (let property in source) {
+					(<any>target)[property] = source[property];
+				}
+			}
+			return target;
+		}
+	}
+	
+	
 	let symbolFunction = (<any>window).Symbol;
     let symbolSupported = typeof symbolFunction === "function" && typeof symbolFunction() === "symbol";
     function generateSymbolKey(key: string) {
@@ -8,7 +24,12 @@ module AsyncChainer {
         return btoa(Math.random().toFixed(16));
     }
 	
-	export var Cancellation: any = new Proxy(() => {}, { set: () => false, get: () => Cancellation, construct: () => Cancellation, apply: () => Cancellation });
+	export var Cancellation: any = new Proxy(() => {}, { 
+		set: () => false, 
+		get: (target, property) => property !== "then" ? Cancellation : undefined, // non-thenable 
+		construct: () => Cancellation, 
+		apply: () => Cancellation
+	});
 	
 	/*
 		Keys for Contract class 
@@ -16,10 +37,12 @@ module AsyncChainer {
     let resolveKey = generateSymbolKey("resolve");
     //let rejectKey = generateSymbolKey("reject");
     let cancelKey = generateSymbolKey("cancel");
+	let resolveCancelKey = generateSymbolKey("cancel-resolve");
     let modifiableKey = generateSymbolKey("modifiable");
 	let revertKey = generateSymbolKey("revert");
 	let canceledKey = generateSymbolKey("canceled");
 	let thisKey = generateSymbolKey("this");
+	let optionsKey = generateSymbolKey("options");
 
 	/*
 		Keys for AsyncContext
@@ -39,15 +62,34 @@ module AsyncChainer {
 	export interface ContractOptionBag {
 	/** Reverting listener for a contract. This will always be called after a contract gets finished in any status. */
 		revert?: (status: string) => void;
+		silentOnCancellation?: boolean;
+		// How about returning Cancellation object automatically cancel chained contracts? - What about promises then? Unintuitive.
+		
+		// for async cancellation process
+		deferCancellation?: boolean;
+	}
+	
+	export interface ContractController {
+		canceled: boolean;
+		confirmCancellation: () => void;
 	}
 		
 	export class Contract<T> extends Promise<T> {
 		get canceled() { return <boolean>this[canceledKey] }
 		
-		constructor(init: (resolve: (value?: T | Thenable<T>) => void, reject: (reason?: any) => void) => void, options: ContractOptionBag = {}) {
+		constructor(init: (resolve: (value?: T | Thenable<T>) => void, reject: (reason?: any) => void, controller: ContractController) => void, options: ContractOptionBag = {}) {
+			options = util.assign<ContractOptionBag>({}, options);
 			let {revert} = options;
+			let controller: ContractController = {
+				get canceled() { return newThis[canceledKey] },
+				confirmCancellation: () => {
+					this[optionsKey].deferCancellation = false;
+					this[resolveCancelKey]();
+				}
+			} 
+			
 			let listener = (resolve : (value?: T | Thenable<T>) => void, reject: (error?: any) => void) => {
-				this[resolveKey] = resolve; 
+				this[resolveKey] = resolve; // newThis is unavailable at construction
 				init(
 					(value) => {
 						if (!this[modifiableKey]) {
@@ -68,7 +110,8 @@ module AsyncChainer {
 							revert("rejected");
 						}
 						reject(error);
-					}
+					},
+					controller
 				)
 			};
 			
@@ -81,6 +124,7 @@ module AsyncChainer {
 			newThis[revertKey] = this[revertKey] = revert;
 			newThis[modifiableKey] = this[modifiableKey] = true;
 			newThis[canceledKey] =  this[canceledKey] = false;
+			newThis[optionsKey] = this[optionsKey] = options;
 			
 			return newThis;
 			//super(listener);
@@ -106,36 +150,63 @@ module AsyncChainer {
 		
 		[cancelKey]() {
 			if (!this[modifiableKey]) {
-				return;
+				return Promise.reject(new Error("Already canceled"));
 			}
-			this[modifiableKey] = false;
 			this[canceledKey] = true;
+			if (!this[optionsKey].deferCancellation) {
+				this[resolveCancelKey]();
+				return Promise.resolve<void>();
+			}
+			else {
+				return this.then<void>();
+			}
+			// Thought: What if Contract goes on after cancelled? [cancel]() will immediately resolve contract but actual process may not be immediately canceled.
+			// cancel() should return Promise (not Contract, no cancellation for cancellation)
+			
+			// no defer: Promise.resolve
+			// defer: should cancellation promise be resolved before target contract? Not sure
+		}
+		
+		[resolveCancelKey]() {
+			this[modifiableKey] = false;
 			if (this[revertKey]) {
 				this[revertKey]("canceled");
 			}
 			this[resolveKey](Cancellation);
 		}
+		
+		
+		then<U>(onfulfilled?: (value: T) => U | Thenable<U>, onrejected?: (error: any) => U | Thenable<U>) {//parameter
+			return super.then((value) => new Promise((resolve, reject) => {
+				if (value === Cancellation && this[optionsKey].silentOnCancellation) {
+					return;
+				}
+				resolve(value);
+			})).then(onfulfilled, onrejected);
+		}
+		// then/catch callback on Contract should receive `this` value as their second argument
+		// then method should not resolve its returning Contract when previous return value is Cancellation object  
 	}
 	
 	export class AsyncContext<T> {
 		constructor(callback: (context: AsyncContext<T>) => any) {
 			this[queueKey] = [];
 			this[canceledKey] = false;
-			this[feederKey] = new AsyncFeed((resolve, reject) => {
+			this[feederKey] = new AsyncFeed((resolve, reject, controller) => {
 				this[resolveFeederKey] = resolve;
 				this[rejectFeederKey] = reject;
 			}, {
-				revert: () => {
-					this[cancelAllKey]();
-				}
+				revert: () => this[cancelAllKey]()
 			});
 			Promise.resolve().then(() => callback(this));
 		}
 		
 		[cancelAllKey]() {
-			for (let item of this[queueKey]) {
-				(<Contract<any>>item)[cancelKey]();
-			}
+			return Promise.all((<AsyncQueueItem<any>[]>this[queueKey]).map((item) => item[cancelKey]()))
+			
+			// for (let item of this[queueKey]) {
+			// 	(<Contract<any>>item)[cancelKey]();
+			// }
 		}
 		
 		queue<U>(callback?: () => U | Thenable<U>, options: ContractOptionBag = {}) {
@@ -254,7 +325,7 @@ module AsyncChainer {
 	
 	// better name? this can be used when a single contract only is needed
 	export class AsyncFeed<T> extends Contract<T> {
-		constructor(init: (resolve: (value?: T | Thenable<T>) => void, reject: (reason?: any) => void) => void, options: ContractOptionBag = {}) {
+		constructor(init: (resolve: (value?: T | Thenable<T>) => void, reject: (reason?: any) => void, controller: ContractController) => void, options: ContractOptionBag = {}) {
 			let newThis = window.SubclassJ ? SubclassJ.getNewThis(AsyncFeed, Contract, [init, options]) : this;
 			if (!window.SubclassJ) {
 				super(init, options);
