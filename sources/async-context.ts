@@ -35,7 +35,7 @@ module AsyncChainer {
 		Keys for Contract class 
 	*/
     let resolveKey = generateSymbolKey("resolve");
-    //let rejectKey = generateSymbolKey("reject");
+    let rejectKey = generateSymbolKey("reject");
     let cancelKey = generateSymbolKey("cancel");
 	let resolveCancelKey = generateSymbolKey("cancel-resolve");
     let modifiableKey = generateSymbolKey("modifiable");
@@ -61,7 +61,7 @@ module AsyncChainer {
 	
 	export interface ContractOptionBag {
 	/** Reverting listener for a contract. This will always be called after a contract gets finished in any status. */
-		revert?: (status: string) => void;
+		revert?: (status: string) => void | Thenable<void>;
 		silentOnCancellation?: boolean;
 		// How about returning Cancellation object automatically cancel chained contracts? - What about promises then? Unintuitive.
 		
@@ -90,26 +90,28 @@ module AsyncChainer {
 			
 			let listener = (resolve : (value?: T | Thenable<T>) => void, reject: (error?: any) => void) => {
 				this[resolveKey] = resolve; // newThis is unavailable at construction
+				this[rejectKey] = reject;
 				init(
 					(value) => {
 						if (!this[modifiableKey]) {
 							return;
 						}
 						this[modifiableKey] = false;
+						let sequence = Promise.resolve<void>();
 						if (revert) {
-							revert("resolved");
+							sequence = sequence.then(() => revert("resolved"));
 						}
-						resolve(value);
+						sequence.then(() => resolve(value)).catch((error) => reject(error)); // reject when revert failed
 					},
 					(error) => {
 						if (!this[modifiableKey]) {
 							return;
 						}
-						this[modifiableKey] = false;
+						let sequence = Promise.resolve<void>();
 						if (revert) {
-							revert("rejected");
+							sequence = sequence.then(() => revert("rejected"));
 						}
-						reject(error);
+						sequence.then(() => reject(error)).catch((error) => reject(error));
 					},
 					controller
 				)
@@ -121,6 +123,7 @@ module AsyncChainer {
 			}
 			
 			newThis[resolveKey] = this[resolveKey];
+			newThis[rejectKey] = this[rejectKey];
 			newThis[revertKey] = this[revertKey] = revert;
 			newThis[modifiableKey] = this[modifiableKey] = true;
 			newThis[canceledKey] =  this[canceledKey] = false;
@@ -150,12 +153,11 @@ module AsyncChainer {
 		
 		[cancelKey]() {
 			if (!this[modifiableKey]) {
-				return Promise.reject(new Error("Already canceled"));
+				return Promise.reject(new Error("Already locked"));
 			}
 			this[canceledKey] = true;
 			if (!this[optionsKey].deferCancellation) {
-				this[resolveCancelKey]();
-				return Promise.resolve<void>();
+				return this[resolveCancelKey]();
 			}
 			else {
 				return this.then<void>();
@@ -169,10 +171,11 @@ module AsyncChainer {
 		
 		[resolveCancelKey]() {
 			this[modifiableKey] = false;
+			let sequence = Promise.resolve<void>();
 			if (this[revertKey]) {
-				this[revertKey]("canceled");
+				sequence = sequence.then(() => this[revertKey]("canceled"));
 			}
-			this[resolveKey](Cancellation);
+			return sequence.then(() => this[resolveKey](Cancellation)).catch((error) => this[rejectKey](error));
 		}
 		
 		
@@ -251,7 +254,7 @@ module AsyncChainer {
 		}
 		cancel(): void {
 			this[canceledKey] = true;
-			this[resolveFeederKey](Cancellation);
+			this[cancelKey]();
 		}
 	}
 	
