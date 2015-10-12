@@ -22,7 +22,11 @@ function continuousLogger() {
 	return new AsyncContext<number>((context) => {
 		let feed = context.queue<void>();
 		let connect = () => {
-			feed = feed.then(() => waitFor(1000)).then(() => count++).then(() => connect());
+			feed = feed.then(() => waitFor(1000)).then(() => count++).then(() => {
+				if (!context.canceled) {
+					connect() 
+				}
+			});
 		}
 		connect();
 	}).feed();

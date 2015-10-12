@@ -80,23 +80,29 @@ module AsyncChainer {
 		constructor(init: (resolve: (value?: T | Thenable<T>) => void, reject: (reason?: any) => void, controller: ContractController) => void, options: ContractOptionBag = {}) {
 			options = util.assign<ContractOptionBag>({}, options);
 			let {revert} = options;
+			let newThis = this; // only before getting real newThis
 			let controller: ContractController = {
 				get canceled() { return newThis[canceledKey] },
 				confirmCancellation: () => {
 					this[optionsKey].deferCancellation = false;
 					this[resolveCancelKey]();
 				}
-			} 
+			}
 			
 			let listener = (resolve : (value?: T | Thenable<T>) => void, reject: (error?: any) => void) => {
 				this[resolveKey] = resolve; // newThis is unavailable at construction
 				this[rejectKey] = reject;
+				this[revertKey] = revert;
+				this[modifiableKey] = true;
+				this[canceledKey] = false;
+				this[optionsKey] = options;
+				
 				init(
 					(value) => {
-						if (!this[modifiableKey]) {
+						if (!newThis[modifiableKey]) {
 							return;
 						}
-						this[modifiableKey] = false;
+						newThis[modifiableKey] = false; // newThis may not be obtained yet but every assignation will be reassigned after obtaining
 						let sequence = Promise.resolve<void>();
 						if (revert) {
 							sequence = sequence.then(() => revert("resolved"));
@@ -104,9 +110,10 @@ module AsyncChainer {
 						sequence.then(() => resolve(value)).catch((error) => reject(error)); // reject when revert failed
 					},
 					(error) => {
-						if (!this[modifiableKey]) {
+						if (!newThis[modifiableKey]) {
 							return;
 						}
+						newThis[modifiableKey] = false;
 						let sequence = Promise.resolve<void>();
 						if (revert) {
 							sequence = sequence.then(() => revert("rejected"));
@@ -117,17 +124,19 @@ module AsyncChainer {
 				)
 			};
 			
-			var newThis = window.SubclassJ ? SubclassJ.getNewThis(Contract, Promise, [listener]) : this;
+			newThis = window.SubclassJ ? SubclassJ.getNewThis(Contract, Promise, [listener]) : this;
 			if (!window.SubclassJ) {
 				super(listener);
 			}
 			
 			newThis[resolveKey] = this[resolveKey];
 			newThis[rejectKey] = this[rejectKey];
-			newThis[revertKey] = this[revertKey] = revert;
-			newThis[modifiableKey] = this[modifiableKey] = true;
-			newThis[canceledKey] =  this[canceledKey] = false;
-			newThis[optionsKey] = this[optionsKey] = options;
+			
+			// guarantee every assignation before obtaining newThis be applied on it
+			newThis[revertKey] = this[revertKey]
+			newThis[modifiableKey] = this[modifiableKey];
+			newThis[canceledKey] = this[canceledKey];
+			newThis[optionsKey] = this[optionsKey];
 			
 			return newThis;
 			//super(listener);
@@ -199,7 +208,10 @@ module AsyncChainer {
 				this[resolveFeederKey] = resolve;
 				this[rejectFeederKey] = reject;
 			}, {
-				revert: () => this[cancelAllKey]()
+				revert: () => {
+					this[canceledKey] = true;
+					this[cancelAllKey]()
+				}
 			});
 			Promise.resolve().then(() => callback(this));
 		}
