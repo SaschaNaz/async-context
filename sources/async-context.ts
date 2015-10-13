@@ -65,6 +65,9 @@ module AsyncChainer {
 		silentOnCancellation?: boolean;
 		// How about returning Cancellation object automatically cancel chained contracts? - What about promises then? Unintuitive.
 		
+		// do nothing but just pass Cancellation object when it receives it 
+		passCancellation?: boolean;
+		
 		// for async cancellation process
 		deferCancellation?: boolean;
 	}
@@ -296,6 +299,17 @@ module AsyncChainer {
 			
 			let output = new AsyncQueueItem<U>((resolve, reject) => {
 				super.then((value) => {
+					this.context[queueKey].push(output);
+					/*
+					What should happen when previous queue is resolved after context cancellation?
+					1. check cancellation and resolve with Cancellation object
+					
+					Cancellation cancellation cancellation... processing cancellation is too hard then. (if queue chain ever uses arguments)
+					- 
+					*/
+					if (this.context.canceled) {
+						value = Cancellation;
+					}
 					if (typeof onfulfilled === "function") {
 						promise = onfulfilled(value);
 					}
@@ -310,7 +324,6 @@ module AsyncChainer {
 				},
 				context: this.context
 			});
-			this.context[queueKey].push(output);
 			return output;
 		}
 		
@@ -319,6 +332,10 @@ module AsyncChainer {
 			
 			let output = new AsyncQueueItem((resolve, reject) => {
 				super.catch((error) => {
+					if (this.context.canceled) {
+						resolve(Cancellation);
+						return; // no catch when canceled
+					}
 					if (typeof onrejected === "function") {
 						promise = onrejected(error);
 					}
