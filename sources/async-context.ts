@@ -62,11 +62,13 @@ module AsyncChainer {
 	export interface ContractOptionBag {
 	/** Reverting listener for a contract. This will always be called after a contract gets finished in any status. */
 		revert?: (status: string) => void | Thenable<void>;
-		silentOnCancellation?: boolean;
+		// silentOnCancellation?: boolean;
 		// How about returning Cancellation object automatically cancel chained contracts? - What about promises then? Unintuitive.
 		
 		// do nothing but just pass Cancellation object when it receives it 
-		passCancellation?: boolean;
+		// passCancellation?: boolean;
+		
+		behaviorOnCancellation?: string; // "pass", "silent", "none"(default) 
 		
 		// for async cancellation process
 		deferCancellation?: boolean;
@@ -81,7 +83,7 @@ module AsyncChainer {
 		get canceled() { return <boolean>this[canceledKey] }
 		
 		constructor(init: (resolve: (value?: T | Thenable<T>) => void, reject: (reason?: any) => void, controller: ContractController) => void, options: ContractOptionBag = {}) {
-			options = util.assign<ContractOptionBag>({}, options);
+			options = util.assign<ContractOptionBag>({ behaviorOnCancellation: "none" }, options);
 			let {revert} = options;
 			let newThis = this; // only before getting real newThis
 			let controller: ContractController = {
@@ -193,8 +195,14 @@ module AsyncChainer {
 		
 		then<U>(onfulfilled?: (value: T) => U | Thenable<U>, onrejected?: (error: any) => U | Thenable<U>) {//parameter
 			return super.then((value) => new Promise((resolve, reject) => {
-				if (value === Cancellation && this[optionsKey].silentOnCancellation) {
-					return;
+				if (value === Cancellation) {
+					if (this[optionsKey].behaviorOnCancellation === "silent") {
+						return;
+					}
+					else if (this[optionsKey].behaviorOnCancellation === "pass") {
+						resolve(Cancellation);
+						return;
+					}
 				}
 				resolve(value);
 			})).then(onfulfilled, onrejected);
@@ -285,6 +293,7 @@ module AsyncChainer {
 			if (!(options.context instanceof AsyncContext)) {
 				throw new Error("An AsyncContext object must be given by `options.context`.");
 			}
+			options = util.assign<any>({ behaviorOnCancellation: "pass" }, options); // pass is the new default value for queue items
 			let newThis = window.SubclassJ ? SubclassJ.getNewThis(AsyncQueueItem, Contract, [init, options]) : this;
 			if (!window.SubclassJ) {
 				super(init, options);
@@ -305,9 +314,11 @@ module AsyncChainer {
 					1. check cancellation and resolve with Cancellation object
 					
 					Cancellation cancellation cancellation... processing cancellation is too hard then. (if queue chain ever uses arguments)
-					- 
+					- fixed by behaviorOnCancellation: "pass"
+					- still too long, should it be default value for queue items?
+					- okay, make it default
 					*/
-					if (this.context.canceled) {
+					if (this.context.canceled && value !== Cancellation) {
 						value = Cancellation;
 					}
 					if (typeof onfulfilled === "function") {
@@ -357,7 +368,7 @@ module AsyncChainer {
 	
 	// better name? this can be used when a single contract only is needed
 	export class AsyncFeed<T> extends Contract<T> {
-		constructor(init: (resolve: (value?: T | Thenable<T>) => void, reject: (reason?: any) => void, controller: ContractController) => void, options: ContractOptionBag = {}) {
+		constructor(init: (resolve: (value?: T | Thenable<T>) => void, reject: (reason?: any) => void, controller: ContractController) => void, options: ContractOptionBag = {}) { 
 			let newThis = window.SubclassJ ? SubclassJ.getNewThis(AsyncFeed, Contract, [init, options]) : this;
 			if (!window.SubclassJ) {
 				super(init, options);
