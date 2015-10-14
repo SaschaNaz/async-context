@@ -83,7 +83,7 @@ module AsyncChainer {
 		get canceled() { return <boolean>this[canceledKey] }
 		
 		constructor(init: (resolve: (value?: T | Thenable<T>) => void, reject: (reason?: any) => void, controller: ContractController) => void, options: ContractOptionBag = {}) {
-			options = util.assign<ContractOptionBag>({ behaviorOnCancellation: "none" }, options);
+			options = util.assign<ContractOptionBag>({ behaviorOnCancellation: "pass" }, options); // pass cancellation by default
 			let {revert} = options;
 			let newThis = this; // only before getting real newThis
 			let controller: ContractController = {
@@ -193,19 +193,18 @@ module AsyncChainer {
 		}
 		
 		
-		then<U>(onfulfilled?: (value: T) => U | Thenable<U>, onrejected?: (error: any) => U | Thenable<U>) {//parameter
-			return super.then((value) => new Promise((resolve, reject) => {
+		then<U>(onfulfilled?: (value: T) => U | Thenable<U>, onrejected?: (error: any) => U | Thenable<U>) {
+			return super.then((value) => {
 				if (value === Cancellation) {
 					if (this[optionsKey].behaviorOnCancellation === "silent") {
-						return;
+						return new Promise(() => {}); // promise that will never be resolved
 					}
 					else if (this[optionsKey].behaviorOnCancellation === "pass") {
-						resolve(Cancellation);
-						return;
+						return Cancellation; // pass should never call onfulfilled
 					}
 				}
-				resolve(value);
-			})).then(onfulfilled, onrejected);
+				return onfulfilled(value);
+			}, onrejected); // catch is not related to cancellation
 		}
 		// then/catch callback on Contract should receive `this` value as their second argument
 		// then method should not resolve its returning Contract when previous return value is Cancellation object  
@@ -293,7 +292,6 @@ module AsyncChainer {
 			if (!(options.context instanceof AsyncContext)) {
 				throw new Error("An AsyncContext object must be given by `options.context`.");
 			}
-			options = util.assign<any>({ behaviorOnCancellation: "pass" }, options); // pass is the new default value for queue items
 			let newThis = window.SubclassJ ? SubclassJ.getNewThis(AsyncQueueItem, Contract, [init, options]) : this;
 			if (!window.SubclassJ) {
 				super(init, options);
@@ -305,6 +303,7 @@ module AsyncChainer {
 		
 		then<U>(onfulfilled?: (value: T) => U | Thenable<U>, options: ContractOptionBag = {}) {
 			let promise: U | Thenable<U>;
+			options = util.assign<ContractOptionBag>({ behaviorOnCancellation: "pass" }, options);
 			
 			let output = new AsyncQueueItem<U>((resolve, reject) => {
 				super.then((value) => {
@@ -317,9 +316,19 @@ module AsyncChainer {
 					- fixed by behaviorOnCancellation: "pass"
 					- still too long, should it be default value for queue items?
 					- okay, make it default
+					- make it default for all contracts
 					*/
-					if (this.context.canceled && value !== Cancellation) {
+					if (this.context.canceled) {
 						value = Cancellation;
+					}
+					if (value === Cancellation) {
+						if (options.behaviorOnCancellation === "silent") {
+							return; // never resolve
+						}
+						else if (options.behaviorOnCancellation === "pass") {
+							resolve(Cancellation);
+							return; // never call onfulfilled
+						}
 					}
 					if (typeof onfulfilled === "function") {
 						promise = onfulfilled(value);
@@ -327,11 +336,16 @@ module AsyncChainer {
 					resolve(promise);
 				})
 			}, {
-				revert: () => {
+				revert: (status) => {
+					let sequence = Promise.resolve<void>();
 					if (promise && typeof promise[cancelKey] === "function") {
-						(<Contract<U>>promise)[cancelKey]();
+						sequence = sequence.then(() => (<Contract<U>>promise)[cancelKey]());
 					}
-					this.context[removeFromQueueKey](output);
+					sequence = sequence.then(() => this.context[removeFromQueueKey](output));
+					if (options.revert) {
+						sequence = sequence.then(() => options.revert(status));
+					}
+					return sequence;
 				},
 				context: this.context
 			});
@@ -354,10 +368,15 @@ module AsyncChainer {
 				})
 			}, {
 				revert: () => {
+					let sequence = Promise.resolve<void>();
 					if (promise && typeof promise[cancelKey] === "function") {
-						(<Contract<U>>promise)[cancelKey]();
+						sequence = sequence.then(() => (<Contract<U>>promise)[cancelKey]());
 					}
-					this.context[removeFromQueueKey](output);
+					sequence = sequence.then(() => this.context[removeFromQueueKey](output));
+					if (options.revert) {
+						sequence = sequence.then(() => options.revert(status));
+					}
+					return sequence;
 				},
 				context: this.context
 			});
