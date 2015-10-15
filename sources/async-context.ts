@@ -68,8 +68,6 @@ module AsyncChainer {
 		// do nothing but just pass Cancellation object when it receives it 
 		// passCancellation?: boolean;
 		
-		behaviorOnCancellation?: string; // "pass", "silent", "none"(default) 
-		
 		// for async cancellation process
 		deferCancellation?: boolean;
 	}
@@ -83,7 +81,7 @@ module AsyncChainer {
 		get canceled() { return <boolean>this[canceledKey] }
 		
 		constructor(init: (resolve: (value?: T | Thenable<T>) => void, reject: (reason?: any) => void, controller: ContractController) => void, options: ContractOptionBag = {}) {
-			options = util.assign<ContractOptionBag>({ behaviorOnCancellation: "pass" }, options); // pass cancellation by default
+			options = util.assign<ContractOptionBag>({}, options); // pass cancellation by default
 			let {revert} = options;
 			let newThis = this; // only before getting real newThis
 			let controller: ContractController = {
@@ -190,28 +188,12 @@ module AsyncChainer {
 				sequence = sequence.then(() => this[revertKey]("canceled"));
 			}
 			return sequence.then(() => this[resolveKey](Cancellation)).catch((error) => this[rejectKey](error));
-		}
-		
-		
-		then<U>(onfulfilled?: (value: T) => U | Thenable<U>, onrejected?: (error: any) => U | Thenable<U>) {
-			return super.then((value) => {
-				if (value === Cancellation) {
-					if (this[optionsKey].behaviorOnCancellation === "silent") {
-						return new Promise(() => {}); // promise that will never be resolved
-					}
-					else if (this[optionsKey].behaviorOnCancellation === "pass") {
-						return Cancellation; // pass should never call onfulfilled
-					}
-				}
-				return onfulfilled(value);
-			}, onrejected); // catch is not related to cancellation
-		}
-		// then/catch callback on Contract should receive `this` value as their second argument
-		// then method should not resolve its returning Contract when previous return value is Cancellation object  
+		}  
 	}
 	
 	export class AsyncContext<T> {
-		constructor(callback: (context: AsyncContext<T>) => any) {
+		constructor(callback: (context: AsyncContext<T>) => any, options: ContractOptionBag = {}) {
+			options = util.assign<ContractOptionBag>({}, options);
 			this[queueKey] = [];
 			this[canceledKey] = false;
 			this[feederKey] = new AsyncFeed((resolve, reject, controller) => {
@@ -280,15 +262,19 @@ module AsyncChainer {
 		}
 	}
 	
-	export interface AsyncQueueOptionBag extends ContractOptionBag {
+	export interface AsyncQueueConstructionOptionBag extends ContractOptionBag {
 		context: AsyncContext<any>;
+	}
+	
+	export interface AsyncQueueOptionBag extends ContractOptionBag {
+		behaviorOnCancellation?: string; // "pass", "silent", "none"(default) 
 	}
 	
 	// Can chaining characteristics of AsyncQueueItem be used generally? 
 	export class AsyncQueueItem<T> extends Contract<T> {
 		get context() { return <AsyncContext<any>>this[contextKey] }
 		 
-		constructor(init: (resolve: (value?: T | Thenable<T>) => void, reject: (reason?: any) => void) => void, options: AsyncQueueOptionBag) {
+		constructor(init: (resolve: (value?: T | Thenable<T>) => void, reject: (reason?: any) => void) => void, options: AsyncQueueConstructionOptionBag) {
 			if (!(options.context instanceof AsyncContext)) {
 				throw new Error("An AsyncContext object must be given by `options.context`.");
 			}
@@ -301,9 +287,9 @@ module AsyncChainer {
 			return newThis;
 		}
 		
-		then<U>(onfulfilled?: (value: T) => U | Thenable<U>, options: ContractOptionBag = {}) {
+		then<U>(onfulfilled?: (value: T) => U | Thenable<U>, options: AsyncQueueOptionBag = {}) {
 			let promise: U | Thenable<U>;
-			options = util.assign<ContractOptionBag>({ behaviorOnCancellation: "pass" }, options);
+			options = util.assign<any>({ behaviorOnCancellation: "pass" }, options);
 			
 			let output = new AsyncQueueItem<U>((resolve, reject) => {
 				super.then((value) => {
