@@ -75,7 +75,7 @@ module AsyncChainer {
 	
 	export interface ContractController {
 		canceled: boolean;
-		confirmCancellation: () => void;
+		confirmCancellation: () => Promise<void>;
 	}
 		
 	export class Contract<T> extends Promise<T> {
@@ -90,7 +90,7 @@ module AsyncChainer {
 				confirmCancellation: () => {
 					this[optionsKey].deferCancellation = false;
 					this[canceledKey] = true;
-					this[resolveCancelKey]();
+					return this[resolveCancelKey]();
 				}
 			}
 			
@@ -220,7 +220,11 @@ module AsyncChainer {
 		}
 		
 		[cancelAllKey]() {
-			return Promise.all((<AsyncQueueItem<any>[]>this[queueKey]).map((item) => item[cancelKey]()))
+			return Promise.all((<AsyncQueueItem<any>[]>this[queueKey]).map((item) => {
+				if (item[modifiableKey]) {
+					return item[cancelKey]()
+				}
+			}))
 			
 			// for (let item of this[queueKey]) {
 			// 	(<Contract<any>>item)[cancelKey]();
@@ -258,7 +262,7 @@ module AsyncChainer {
 		}
 		
 		get canceled() {
-			return <boolean>this[canceledKey];
+			return <boolean>this[feederKey][canceledKey] || <boolean>this[canceledKey];
 		}
 		
 		resolve(value?: T): Promise<void> {
@@ -269,7 +273,7 @@ module AsyncChainer {
 			this[modifiableKey] = false;
 			return this[rejectFeederKey](error);
 		}
-		cancel(): void {
+		cancel(): Promise<void> {
 			this[canceledKey] = true;
 			return this[feederControllerKey].confirmCancellation();
 		}
@@ -280,7 +284,7 @@ module AsyncChainer {
 	}
 	
 	export interface AsyncQueueOptionBag extends ContractOptionBag {
-		behaviorOnCancellation?: string; // "pass", "silent", "none"(default) 
+		behaviorOnCancellation?: string; // "pass"(default), "silent", "none"
 	}
 	
 	// Can chaining characteristics of AsyncQueueItem be used generally? 
@@ -315,7 +319,6 @@ module AsyncChainer {
 					- fixed by behaviorOnCancellation: "pass"
 					- still too long, should it be default value for queue items?
 					- okay, make it default
-					- make it default for all contracts
 					*/
 					if (this.context.canceled) {
 						value = Cancellation;
@@ -337,7 +340,7 @@ module AsyncChainer {
 			}, {
 				revert: (status) => {
 					let sequence = Promise.resolve<void>();
-					if (promise && typeof promise[cancelKey] === "function") {
+					if (status === "canceled" && promise && typeof promise[cancelKey] === "function") {
 						sequence = sequence.then(() => (<Contract<U>>promise)[cancelKey]());
 					}
 					sequence = sequence.then(() => this.context[removeFromQueueKey](output));
@@ -394,7 +397,7 @@ module AsyncChainer {
 			return newThis;
 		}
 		cancel() {
-			this[cancelKey]();
+			return this[cancelKey]();
 		}
 	}
 }

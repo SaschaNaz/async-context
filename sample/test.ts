@@ -26,10 +26,13 @@ function continuousLogger() {
 				if (!context.canceled) {
 					connect() 
 				}
-			});
+				else {
+					context.resolve(count);
+				}
+			}, { behaviorOnCancellation: "none" });
 		}
 		connect();
-	}).feed();
+	}, { deferCancellation: true }).feed();
 }
 
 function waitFor(millisecond: number) {
