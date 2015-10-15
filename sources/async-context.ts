@@ -50,6 +50,7 @@ module AsyncChainer {
     let feederKey = generateSymbolKey("feeder");
     let resolveFeederKey = generateSymbolKey("resolve-feeder");
     let rejectFeederKey = generateSymbolKey("reject-feeder");
+	let feederControllerKey = generateSymbolKey("feeder-controller")
     let queueKey = generateSymbolKey("queue");
 	let cancelAllKey = generateSymbolKey("cancel-all")
 	let removeFromQueueKey = generateSymbolKey("remove-from-queue");
@@ -80,7 +81,7 @@ module AsyncChainer {
 	export class Contract<T> extends Promise<T> {
 		get canceled() { return <boolean>this[canceledKey] }
 		
-		constructor(init: (resolve: (value?: T | Thenable<T>) => void, reject: (reason?: any) => void, controller: ContractController) => void, options: ContractOptionBag = {}) {
+		constructor(init: (resolve: (value?: T | Thenable<T>) => Promise<void>, reject: (reason?: any) => Promise<void>, controller: ContractController) => void, options: ContractOptionBag = {}) {
 			options = util.assign<ContractOptionBag>({}, options); // pass cancellation by default
 			let {revert} = options;
 			let newThis = this; // only before getting real newThis
@@ -88,6 +89,7 @@ module AsyncChainer {
 				get canceled() { return newThis[canceledKey] },
 				confirmCancellation: () => {
 					this[optionsKey].deferCancellation = false;
+					this[canceledKey] = true;
 					this[resolveCancelKey]();
 				}
 			}
@@ -110,7 +112,7 @@ module AsyncChainer {
 						if (revert) {
 							sequence = sequence.then(() => revert("resolved"));
 						}
-						sequence.then(() => resolve(value)).catch((error) => reject(error)); // reject when revert failed
+						return sequence.then(() => resolve(value)).catch((error) => reject(error)); // reject when revert failed
 					},
 					(error) => {
 						if (!newThis[modifiableKey]) {
@@ -121,7 +123,7 @@ module AsyncChainer {
 						if (revert) {
 							sequence = sequence.then(() => revert("rejected"));
 						}
-						sequence.then(() => reject(error)).catch((error) => reject(error));
+						return sequence.then(() => reject(error)).catch((error) => reject(error));
 					},
 					controller
 				)
@@ -188,22 +190,31 @@ module AsyncChainer {
 				sequence = sequence.then(() => this[revertKey]("canceled"));
 			}
 			return sequence.then(() => this[resolveKey](Cancellation)).catch((error) => this[rejectKey](error));
-		}  
+			// won't resolve with Cancellation when already resolved 
+		}
 	}
 	
 	export class AsyncContext<T> {
 		constructor(callback: (context: AsyncContext<T>) => any, options: ContractOptionBag = {}) {
 			options = util.assign<ContractOptionBag>({}, options);
 			this[queueKey] = [];
+			this[modifiableKey] = true;
 			this[canceledKey] = false;
 			this[feederKey] = new AsyncFeed((resolve, reject, controller) => {
 				this[resolveFeederKey] = resolve;
 				this[rejectFeederKey] = reject;
+				this[feederControllerKey] = controller;
 			}, {
-				revert: () => {
-					this[canceledKey] = true;
-					this[cancelAllKey]()
-				}
+				revert: (status) => {
+					this[modifiableKey] = false;
+					
+					return this[cancelAllKey]().then(() => {
+						if (options.revert){
+							return options.revert(status);
+						}
+					});
+				},
+				deferCancellation: options.deferCancellation
 			});
 			Promise.resolve().then(() => callback(this));
 		}
@@ -250,15 +261,17 @@ module AsyncChainer {
 			return <boolean>this[canceledKey];
 		}
 		
-		resolve(value?: T): void {
-			this[resolveFeederKey](value);
+		resolve(value?: T): Promise<void> {
+			this[modifiableKey] = false;
+			return this[resolveFeederKey](value);
 		}
-		reject(error?: any): void {
-			this[rejectFeederKey](error);
+		reject(error?: any): Promise<void> {
+			this[modifiableKey] = false;
+			return this[rejectFeederKey](error);
 		}
 		cancel(): void {
 			this[canceledKey] = true;
-			this[cancelKey]();
+			return this[feederControllerKey].confirmCancellation();
 		}
 	}
 	
@@ -373,7 +386,7 @@ module AsyncChainer {
 	
 	// better name? this can be used when a single contract only is needed
 	export class AsyncFeed<T> extends Contract<T> {
-		constructor(init: (resolve: (value?: T | Thenable<T>) => void, reject: (reason?: any) => void, controller: ContractController) => void, options: ContractOptionBag = {}) { 
+		constructor(init: (resolve: (value?: T | Thenable<T>) => Promise<void>, reject: (reason?: any) => Promise<void>, controller: ContractController) => void, options: ContractOptionBag = {}) { 
 			let newThis = window.SubclassJ ? SubclassJ.getNewThis(AsyncFeed, Contract, [init, options]) : this;
 			if (!window.SubclassJ) {
 				super(init, options);
