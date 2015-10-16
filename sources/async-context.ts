@@ -59,6 +59,7 @@ module AsyncChainer {
         Keys for AsyncQueueItem
     */
     let contextKey = generateSymbolKey("context");
+    let cancellationAwaredKey = generateSymbolKey("cancellation-awared")
 
     export interface ContractOptionBag {
         /** Reverting listener for a contract. This will always be called after a contract gets finished in any status. */
@@ -302,6 +303,7 @@ module AsyncChainer {
             }
 
             newThis[contextKey] = this[contextKey] = options.context;
+            newThis[cancellationAwaredKey] = this[cancellationAwaredKey] = false;
             return newThis;
         }
         
@@ -326,8 +328,16 @@ module AsyncChainer {
                     - still too long, should it be default value for queue items?
                     - okay, make it default
                     */
-                    if (this.context.canceled) {
+                    if (this.context.canceled && !this[cancellationAwaredKey]) {
                         value = Cancellation;
+                        output[cancellationAwaredKey] = true;
+                        /*
+                        TODO: use cancellationAwaredKey so that Cancellation passes only until first behaviorOnCancellation: "none"
+                        The key should not on context as it can contain multiple parallel chains
+                        Can it be on AsyncQueueConstructorOptionBag? No, construction occurs before cancellation
+                        super.then is always asynchronous so `output` is always already obtained
+                        */
+                        
                     }
                     if (value === Cancellation) {
                         if (options.behaviorOnCancellation === "silent") {

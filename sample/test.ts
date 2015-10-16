@@ -24,7 +24,7 @@ function continuousLogger() {
     return new AsyncContext<number>((context) => {
         let feed = context.queue<void>();
         let connect = () => {
-            feed = feed.then(() => waitFor(1000)).then(() => count++).then(() => {
+            feed = feed.queue(() => waitFor(1000)).queue(() => count++).queue(() => {
                 if (!context.canceled) {
                     connect() 
                 }
@@ -39,7 +39,7 @@ function continuousLogger() {
 
 function awaitWaiter() {
     return new AsyncContext<boolean>(async (context) => {
-        let result = await context.queue(() => waitFor(5000)).then((value) => {
+        let result = await context.queue(() => waitFor(5000)).queue((value) => {
             return value === AsyncChainer.Cancellation ? "cancel" : "uncancel";
         }, { behaviorOnCancellation: "none" });
         
