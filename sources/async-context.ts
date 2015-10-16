@@ -311,15 +311,15 @@ module AsyncChainer {
             let output = new AsyncQueueItem<U>((resolve, reject) => {
                 super.then((value) => {
                     this.context[queueKey].push(output);
-					/*
-					What should happen when previous queue is resolved after context cancellation?
-					1. check cancellation and resolve with Cancellation object
-					
-					Cancellation cancellation cancellation... processing cancellation is too hard then. (if queue chain ever uses arguments)
-					- fixed by behaviorOnCancellation: "pass"
-					- still too long, should it be default value for queue items?
-					- okay, make it default
-					*/
+                    /*
+                    What should happen when previous queue is resolved after context cancellation?
+                    1. check cancellation and resolve with Cancellation object
+                    
+                    Cancellation cancellation cancellation... processing cancellation is too hard then. (if queue chain ever uses arguments)
+                    - fixed by behaviorOnCancellation: "pass"
+                    - still too long, should it be default value for queue items?
+                    - okay, make it default
+                    */
                     if (this.context.canceled) {
                         value = Cancellation;
                     }
