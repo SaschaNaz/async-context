@@ -4,6 +4,10 @@ declare var contRun: HTMLInputElement;
 declare var contCancel: HTMLInputElement;
 declare var awaitRun: HTMLInputElement;
 declare var awaitCancel: HTMLInputElement;
+declare var await2Run: HTMLInputElement;
+declare var await2Cancel: HTMLInputElement;
+declare var await3Run: HTMLInputElement;
+declare var await3Cancel: HTMLInputElement;
 
 import AsyncContext = AsyncChainer.AsyncContext;
 import AsyncFeed = AsyncChainer.AsyncFeed;
@@ -39,11 +43,39 @@ function continuousLogger() {
 
 function awaitWaiter() {
     return new AsyncContext<boolean>(async (context) => {
-        let result = await context.queue(() => waitFor(5000)).queue((value) => {
+        let result = await context.queue(() => waitFor(3000)).queue((value) => {
             return value === AsyncChainer.Cancellation ? "cancel" : "uncancel";
         }, { behaviorOnCancellation: "none" });
         
         if (result !== "cancel") {
+            context.resolve(false);
+        }
+        else {
+            context.resolve(true)
+        }
+    }, { deferCancellation: true }).feed();
+}
+
+function awaitWaiter2() {
+    return new AsyncContext<boolean>(async (context) => {
+        let result = await context.queue(() => waitFor(3000));
+        
+        if (result !== AsyncChainer.Cancellation) {
+            context.resolve(false);
+        }
+        else {
+            context.resolve(true)
+        }
+    }, { deferCancellation: true }).feed();
+}
+
+function awaitWaiter3() {
+    return new AsyncContext<boolean>(async (context) => {
+        await waitFor(3000);
+        
+        let result = await context.queue(() => Promise.resolve());  
+        
+        if (result !== AsyncChainer.Cancellation) {
             context.resolve(false);
         }
         else {
@@ -108,5 +140,23 @@ waitEvent(document, "DOMContentLoaded").then(() => {
     })
     subscribeEvent(awaitCancel, "click", () => {
         awaiter.cancel();
+    })
+    
+    let awaiter2: AsyncFeed<boolean>
+    subscribeEvent(await2Run, "click", () => {
+        awaiter2 = awaitWaiter2();
+        awaiter2.then((count) => alert(count));
+    })
+    subscribeEvent(await2Cancel, "click", () => {
+        awaiter2.cancel();
+    })
+    
+    let awaiter3: AsyncFeed<boolean>
+    subscribeEvent(await3Run, "click", () => {
+        awaiter3 = awaitWaiter3();
+        awaiter3.then((count) => alert(count));
+    })
+    subscribeEvent(await3Cancel, "click", () => {
+        awaiter3.cancel();
     })
 });
