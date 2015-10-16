@@ -237,17 +237,18 @@ module AsyncChainer {
                 promise = callback();
             }
             let output = new AsyncQueueItem<U>((resolve, reject) => {
-                // resolve function automatically resolves non-thenable object, rejecting promise, etc.
-                resolve(promise);
+                // resolve/reject must be called after whole promise chain is resolved
+                // so that the queue item keep being modifiable until resolving whole chain 
+                Promise.resolve(promise).then(resolve, reject);
             }, {
-                    revert: () => {
-                        if (promise && typeof promise[cancelKey] === "function") {
-                            (<Contract<U>>promise)[cancelKey]();
-                        }
-                        this[removeFromQueueKey](output);
-                    },
-                    context: this
-                });
+                revert: (status) => {
+                    if (status === "canceled" && promise && typeof promise[cancelKey] === "function") {
+                        (<Contract<U>>promise)[cancelKey]();
+                    }
+                    this[removeFromQueueKey](output);
+                },
+                context: this
+            });
             this[queueKey].push(output);
             return output; // return an object that support chaining
         }
@@ -335,7 +336,7 @@ module AsyncChainer {
                     if (typeof onfulfilled === "function") {
                         promise = onfulfilled(value);
                     }
-                    resolve(promise);
+                    Promise.resolve(promise).then(resolve, reject);
                 })
             }, {
                 revert: (status) => {
