@@ -31,9 +31,9 @@ module AsyncChainer {
         apply: () => Cancellation
     });
 
-	/*
-		Keys for Contract class 
-	*/
+    /*
+        Keys for Contract class 
+    */
     let resolveKey = generateSymbolKey("resolve");
     let rejectKey = generateSymbolKey("reject");
     let cancelKey = generateSymbolKey("cancel");
@@ -44,9 +44,9 @@ module AsyncChainer {
     let thisKey = generateSymbolKey("this");
     let optionsKey = generateSymbolKey("options");
 
-	/*
-		Keys for AsyncContext
-	*/
+    /*
+        Keys for AsyncContext
+    */
     let feederKey = generateSymbolKey("feeder");
     let resolveFeederKey = generateSymbolKey("resolve-feeder");
     let rejectFeederKey = generateSymbolKey("reject-feeder");
@@ -55,9 +55,9 @@ module AsyncChainer {
     let cancelAllKey = generateSymbolKey("cancel-all")
     let removeFromQueueKey = generateSymbolKey("remove-from-queue");
 
-	/*
-		Keys for AsyncQueueItem
-	*/
+    /*
+        Keys for AsyncQueueItem
+    */
     let contextKey = generateSymbolKey("context");
 
     export interface ContractOptionBag {
