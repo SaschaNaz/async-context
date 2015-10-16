@@ -304,10 +304,15 @@ module AsyncChainer {
             newThis[contextKey] = this[contextKey] = options.context;
             return newThis;
         }
-
-        then<U>(onfulfilled?: (value: T) => U | Thenable<U>, options: AsyncQueueOptionBag = {}) {
-            let promise: U | Thenable<U>;
+        
+        queue<U>(onfulfilled?: (value: T) => U | Thenable<U>, options: AsyncQueueOptionBag = {}) {
             options = util.assign<any>({ behaviorOnCancellation: "pass" }, options);
+            return this.then(onfulfilled, undefined, options);
+        }
+
+        then<U>(onfulfilled?: (value: T) => U | Thenable<U>, onrejected?: (error: any) => U | Thenable<U>, options: AsyncQueueOptionBag = {}) {
+            let promise: U | Thenable<U>;
+            options = util.assign<any>({ behaviorOnCancellation: "none" }, options);
 
             let output = new AsyncQueueItem<U>((resolve, reject) => {
                 super.then((value) => {
@@ -331,6 +336,18 @@ module AsyncChainer {
                         else if (options.behaviorOnCancellation === "pass") {
                             resolve(Cancellation);
                             return; // never call onfulfilled
+                            /*
+                            TODO: This blocks await expression from receiving Cancellation
+                            proposal: make .queue as syntax sugar for .then(, { behaviorOnCancellation: "pass" })
+                            and set the default value as "none" for .then
+                            
+                            TODO: awaiter uses .then(onfulfill, onreject) but queue item doesn't use this
+                            .then(onfullfill, onreject, options)
+                            .queue(onfulfill, options)
+                            .catch(onfulfill, options)
+                            better name for .queue()? just make it queue as it have
+                            different default behaviorOnCancellation value
+                            */
                         }
                     }
                     if (typeof onfulfilled === "function") {
@@ -357,6 +374,7 @@ module AsyncChainer {
 
         catch<U>(onrejected?: (error: any) => U | Thenable<U>, options: ContractOptionBag = {}) {
             let promise: U | Thenable<U>;
+            options = util.assign<any>({}, options);
 
             let output = new AsyncQueueItem((resolve, reject) => {
                 super.catch((error) => {
