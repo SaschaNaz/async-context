@@ -72,6 +72,8 @@ module AsyncChainer {
 
         // for async cancellation process
         deferCancellation?: boolean;
+        
+        precancel?: () => void | Thenable<void>;
     }
 
     export interface ContractController {
@@ -171,11 +173,15 @@ module AsyncChainer {
                 return Promise.reject(new Error("Already locked"));
             }
             this[canceledKey] = true;
+            let sequence = Promise.resolve();
+            if (this[optionsKey].precancel) {
+                sequence = sequence.then(() => this[optionsKey].precancel());
+            }
             if (!this[optionsKey].deferCancellation) {
-                return this[resolveCancelKey]();
+                return sequence.then(() => this[resolveCancelKey]());
             }
             else {
-                return this.then<void>();
+                return sequence.then(() => this.then<void>());
             }
             // Thought: What if Contract goes on after cancelled? [cancel]() will immediately resolve contract but actual process may not be immediately canceled.
             // cancel() should return Promise (not Contract, no cancellation for cancellation)
@@ -208,13 +214,28 @@ module AsyncChainer {
             }, {
                 revert: (status) => {
                     this[modifiableKey] = false;
-
+                    if (status === "canceled") {
+                        return; // already processed by precancel
+                    }
                     return this[cancelAllKey]().then(() => {
                         if (options.revert) {
                             return options.revert(status);
                         }
                     });
+                    /*
+                    TODO: feed().cancel() does not serially call revert() when deferCancellation and this blocks canceling queue item 
+                    proposal 1: add oncancel(or precancel) on ContractOptionBag
+                    proposal 2: add flag to call revert() earlier even when deferCancellation
+                    */
                 },
+                precancel: () => {
+                    // still modifiable at the time of precancel
+                    return this[cancelAllKey]().then(() => {
+                        if (options.revert) {
+                            return options.revert(status);
+                        }
+                    });
+                },    
                 deferCancellation: options.deferCancellation
             });
             Promise.resolve().then(() => callback(this));
@@ -337,7 +358,6 @@ module AsyncChainer {
                         Can it be on AsyncQueueConstructorOptionBag? No, construction occurs before cancellation
                         super.then is always asynchronous so `output` is always already obtained
                         */
-                        
                     }
                     if (value === Cancellation) {
                         if (options.behaviorOnCancellation === "silent") {
