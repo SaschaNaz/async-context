@@ -8,8 +8,8 @@ function asyncFoo() {
   return new AsyncContext((context) => {
     context
       .queue(bar)
-      .then(baz)
-      .then(() => context.resolve());
+      .queue(baz)
+      .queue(() => context.resolve());
   }).feed();
 }
 let foo = asyncFoo();
