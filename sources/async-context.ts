@@ -176,9 +176,7 @@ module AsyncChainer {
             let sequence = Promise.resolve();
             if (this[optionsKey].precancel) {
                 sequence = sequence.then(() => this[optionsKey].precancel());
-                /*
-                TODO: error on precancel breaks cancellation
-                */
+                // precancel error should be catched by .cancel().catch()
             }
             if (!this[optionsKey].deferCancellation) {
                 return sequence.then(() => this[resolveCancelKey]());
@@ -449,7 +447,7 @@ module AsyncChainer {
             }
             return newThis;
         }
-        cancel() {
+        cancel(): Promise<void> {
             return this[cancelKey]();
         }
     }
