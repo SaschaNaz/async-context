@@ -169,13 +169,16 @@ module AsyncChainer {
 		*/
 
         [cancelKey]() {
-            if (!this[modifiableKey]) {
+            if (!this[modifiableKey] || this[canceledKey]) {
                 return Promise.reject(new Error("Already locked"));
             }
             this[canceledKey] = true;
             let sequence = Promise.resolve();
             if (this[optionsKey].precancel) {
                 sequence = sequence.then(() => this[optionsKey].precancel());
+                /*
+                TODO: error on precancel breaks cancellation
+                */
             }
             if (!this[optionsKey].deferCancellation) {
                 return sequence.then(() => this[resolveCancelKey]());
@@ -214,10 +217,11 @@ module AsyncChainer {
             }, {
                 revert: (status) => {
                     this[modifiableKey] = false;
-                    if (status === "canceled") {
-                        return; // already processed by precancel
+                    let sequence = Promise.resolve();
+                    if (status !== "canceled") {
+                        sequence = sequence.then(() => this[cancelAllKey]());
                     }
-                    return this[cancelAllKey]().then(() => {
+                    return sequence.then(() => {
                         if (options.revert) {
                             return options.revert(status);
                         }
@@ -230,11 +234,11 @@ module AsyncChainer {
                 },
                 precancel: () => {
                     // still modifiable at the time of precancel
-                    return this[cancelAllKey]().then(() => {
-                        if (options.revert) {
-                            return options.revert(status);
+                    return Promise.resolve().then(() => {
+                        if (options.precancel) {
+                            return options.precancel();
                         }
-                    });
+                    }).then(() => this[cancelAllKey]());
                 },    
                 deferCancellation: options.deferCancellation
             });
@@ -243,7 +247,7 @@ module AsyncChainer {
 
         [cancelAllKey]() {
             return Promise.all((<AsyncQueueItem<any>[]>this[queueKey]).map((item) => {
-                if (item[modifiableKey]) {
+                if (item[modifiableKey] && !item[canceledKey]) {
                     return item[cancelKey]()
                 }
             }))

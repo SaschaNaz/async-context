@@ -4,3 +4,4 @@ sources/*.js.map
 sample/*.js
 sample/*.js.map
 .vscode/settings.json
+sample/.vscode/settings.json

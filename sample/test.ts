@@ -8,6 +8,9 @@ declare var await2Run: HTMLInputElement;
 declare var await2Cancel: HTMLInputElement;
 declare var await3Run: HTMLInputElement;
 declare var await3Cancel: HTMLInputElement;
+declare var errorRun: HTMLInputElement;
+declare var error2Run: HTMLInputElement;
+declare var error2Cancel: HTMLInputElement;
 
 import AsyncContext = AsyncChainer.AsyncContext;
 import AsyncFeed = AsyncChainer.AsyncFeed;
@@ -84,11 +87,31 @@ function awaitWaiter3() {
     }, { deferCancellation: true }).feed();
 }
 
+function errorWaiter() {
+    return new AsyncContext<void>(async (context) => {
+        try {
+            await new Contract((resolve) => resolve(), {
+                revert: () => { throw new Error("wow") }
+            });
+            context.resolve();
+        }
+        catch (e) {
+            context.reject(e);
+        }
+    }).feed()
+}
+
+function errorWaiter2() {
+    return new AsyncContext<void>((context) => { }, {
+        precancel: () => {
+            throw new Error("wow2")
+        }
+    }).feed()
+}
+
 function waitFor(millisecond: number) {
     return new AsyncFeed((resolve, reject) => {
-        setTimeout(() => {
-            resolve();
-        }, millisecond)
+        setTimeout(() => resolve(), millisecond)
     })
 } 
 
@@ -114,49 +137,77 @@ function subscribeEvent<T extends Event>(element: EventTarget, eventName: string
 
 waitEvent(document, "DOMContentLoaded").then(() => {
     alert("DOMContentLOADED!");
+    {
+        let logger: AsyncFeed<void>;
+        subscribeEvent(singleRun, "click", () => {
+            logger = delayedLogger();
+            logger.then((value) => alert(value));
+        })
+        subscribeEvent(singleCancel, "click", () => {
+            logger.cancel();
+        })
+    }
     
-    let logger: AsyncFeed<void>;
-    subscribeEvent(singleRun, "click", () => {
-        logger = delayedLogger();
-        logger.then((value) => alert(value));
-    })
-    subscribeEvent(singleCancel, "click", () => {
-        logger.cancel();
-    })
+    {
+        let contLogger: AsyncFeed<number>
+        subscribeEvent(contRun, "click", () => {
+            contLogger = continuousLogger();
+            contLogger.then((count) => alert(count));
+        })
+        subscribeEvent(contCancel, "click", () => {
+            contLogger.cancel();
+        })
+    }
     
-    let contLogger: AsyncFeed<number>
-    subscribeEvent(contRun, "click", () => {
-        contLogger = continuousLogger();
-        contLogger.then((count) => alert(count));
-    })
-    subscribeEvent(contCancel, "click", () => {
-        contLogger.cancel();
-    })
+    {
+        let awaiter: AsyncFeed<boolean>
+        subscribeEvent(awaitRun, "click", () => {
+            awaiter = awaitWaiter();
+            awaiter.then((count) => alert(count));
+        })
+        subscribeEvent(awaitCancel, "click", () => {
+            awaiter.cancel();
+        })
+    }
     
-    let awaiter: AsyncFeed<boolean>
-    subscribeEvent(awaitRun, "click", () => {
-        awaiter = awaitWaiter();
-        awaiter.then((count) => alert(count));
-    })
-    subscribeEvent(awaitCancel, "click", () => {
-        awaiter.cancel();
-    })
+    {
+        let awaiter2: AsyncFeed<boolean>
+        subscribeEvent(await2Run, "click", () => {
+            awaiter2 = awaitWaiter2();
+            awaiter2.then((count) => alert(count));
+        })
+        subscribeEvent(await2Cancel, "click", () => {
+            awaiter2.cancel();
+        })
+    }
     
-    let awaiter2: AsyncFeed<boolean>
-    subscribeEvent(await2Run, "click", () => {
-        awaiter2 = awaitWaiter2();
-        awaiter2.then((count) => alert(count));
-    })
-    subscribeEvent(await2Cancel, "click", () => {
-        awaiter2.cancel();
-    })
+    {
+        let awaiter3: AsyncFeed<boolean>
+        subscribeEvent(await3Run, "click", () => {
+            awaiter3 = awaitWaiter3();
+            awaiter3.then((count) => alert(count));
+        })
+        subscribeEvent(await3Cancel, "click", () => {
+            awaiter3.cancel();
+        })
+    }
     
-    let awaiter3: AsyncFeed<boolean>
-    subscribeEvent(await3Run, "click", () => {
-        awaiter3 = awaitWaiter3();
-        awaiter3.then((count) => alert(count));
-    })
-    subscribeEvent(await3Cancel, "click", () => {
-        awaiter3.cancel();
-    })
+    {
+        let eWaiter: AsyncFeed<void>
+        subscribeEvent(errorRun, "click", () => {
+            eWaiter = errorWaiter();
+            eWaiter.catch((error) => alert(error));
+        })
+    }
+    
+    {
+        let waiter: AsyncFeed<void>
+        subscribeEvent(error2Run, "click", () => {
+            waiter = errorWaiter2();
+            waiter.catch((error) => alert(error));
+        })
+        subscribeEvent(error2Cancel, "click", () => {
+            waiter.cancel();
+        })
+    }
 });
