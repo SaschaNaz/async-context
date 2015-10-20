@@ -1,7 +1,8 @@
 built/
 sources/*.js
 sources/*.js.map
+sources/*.d.ts
 sample/*.js
 sample/*.js.map
-.vscode/settings.json
-sample/.vscode/settings.json
+**/.vscode/settings.json
+node_modules/

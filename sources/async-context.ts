@@ -1,4 +1,4 @@
-module AsyncChainer {
+namespace AsyncChainer {
     namespace util {
         export function assign<T>(target: T, ...sources: any[]) {
             if ((<any>Object).assign)
@@ -13,9 +13,17 @@ module AsyncChainer {
             return target;
         }
     }
+    
+    let globalObject: any;
+    declare var global: any;
+    if (typeof self !== "undefined") {
+        globalObject = self;
+    }
+    else if (typeof global !== "undefined") {
+        globalObject = global;
+    }
 
-
-    let symbolFunction = (<any>window).Symbol;
+    let symbolFunction = globalObject.Symbol;
     let symbolSupported = typeof symbolFunction === "function" && typeof symbolFunction() === "symbol";
     function generateSymbolKey(key: string) {
         if (symbolSupported) {
@@ -150,23 +158,23 @@ module AsyncChainer {
             //super(listener);
         }
 
-		/*
-		This is blocking destructuring, any solution?
-		example: let [foo, bar] = await Baz();
-		Returning Canceled object will break this code
-		Every code that does not expect cancellation will be broken
-		... but codes that explicitly allow it should also expect it.
-		Cancellation still is not so intuitive. What would users expect when their waiting promise be cancelled?
-		1. just do not call back - this will break ES7 await 
-		2. return Canceled object - potentially break codes; users have to check it every time
-		3. add oncanceled callback function - this also will break await 
-		
-		2-1. Can cancellation check be automated, inline?
-		let [x, y] = await cxt.queue(foo); // what can be done here?
-		Make cancellation object special: hook indexer and make them all return cancellation object
-		(await cxt.queue(foo)).bar(); // .bar will be cancellation object, and .bar() will also be.
-		
-		*/
+        /*
+        This is blocking destructuring, any solution?
+        example: let [foo, bar] = await Baz();
+        Returning Canceled object will break this code
+        Every code that does not expect cancellation will be broken
+        ... but codes that explicitly allow it should also expect it.
+        Cancellation still is not so intuitive. What would users expect when their waiting promise be cancelled?
+        1. just do not call back - this will break ES7 await 
+        2. return Canceled object - potentially break codes; users have to check it every time
+        3. add oncanceled callback function - this also will break await 
+        
+        2-1. Can cancellation check be automated, inline?
+        let [x, y] = await cxt.queue(foo); // what can be done here?
+        Make cancellation object special: hook indexer and make them all return cancellation object
+        (await cxt.queue(foo)).bar(); // .bar will be cancellation object, and .bar() will also be.
+        
+        */
 
         [cancelKey]() {
             if (!this[modifiableKey] || this[canceledKey]) {
@@ -251,7 +259,7 @@ module AsyncChainer {
             }))
 
             // for (let item of this[queueKey]) {
-            // 	(<Contract<any>>item)[cancelKey]();
+            //     (<Contract<any>>item)[cancelKey]();
             // }
         }
 
@@ -450,5 +458,11 @@ module AsyncChainer {
         cancel(): Promise<void> {
             return this[cancelKey]();
         }
+    }
+    
+    // optional module export
+    declare var module: any;
+    if (typeof module !== "undefined" && module.exports) {
+        module.exports = AsyncChainer;
     }
 }
