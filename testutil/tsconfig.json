@@ -7,7 +7,6 @@
         "outDir": "built/"
     },
     "files": [
-        "../built/async-context.d.ts",
-        "test.ts"
+        "testutil.ts"
     ]
 }

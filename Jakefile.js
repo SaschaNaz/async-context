@@ -35,7 +35,7 @@ task("local", function () {
         var dts = "built/async-context.d.ts";
         var dtsContents = fs.readFileSync("built/async-context.d.ts");
         // export declare namespace AsyncChainer
-        fs.writeFileSync(dts, "export " + dtsContents)
+        fs.writeFileSync(dts, dtsContents + "\r\nexport default AsyncChainer;")
         complete();
     })
 }, jakeAsyncTaskOptionBag);

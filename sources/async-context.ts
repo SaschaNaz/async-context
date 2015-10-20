@@ -34,7 +34,7 @@ namespace AsyncChainer {
 
     export var Cancellation: any = new Proxy(() => { }, {
         set: () => false,
-        get: (target, property) => property !== "then" ? Cancellation : undefined, // non-thenable 
+        get: (target, property) => property !== "then" ? Cancellation : undefined, // non-PromiseLike 
         construct: () => Cancellation,
         apply: () => Cancellation
     });
@@ -71,7 +71,7 @@ namespace AsyncChainer {
 
     export interface ContractOptionBag {
         /** Reverting listener for a contract. This will always be called after a contract gets finished in any status. */
-        revert?: (status: string) => void | Thenable<void>;
+        revert?: (status: string) => void | PromiseLike<void>;
         // silentOnCancellation?: boolean;
         // How about returning Cancellation object automatically cancel chained contracts? - What about promises then? Unintuitive.
 
@@ -81,7 +81,7 @@ namespace AsyncChainer {
         // for async cancellation process
         deferCancellation?: boolean;
         
-        precancel?: () => void | Thenable<void>;
+        precancel?: () => void | PromiseLike<void>;
     }
 
     export interface ContractController {
@@ -92,7 +92,7 @@ namespace AsyncChainer {
     export class Contract<T> extends Promise<T> {
         get canceled() { return <boolean>this[canceledKey] }
 
-        constructor(init: (resolve: (value?: T | Thenable<T>) => Promise<void>, reject: (reason?: any) => Promise<void>, controller: ContractController) => void, options: ContractOptionBag = {}) {
+        constructor(init: (resolve: (value?: T | PromiseLike<T>) => Promise<void>, reject: (reason?: any) => Promise<void>, controller: ContractController) => void, options: ContractOptionBag = {}) {
             options = util.assign<ContractOptionBag>({}, options); // pass cancellation by default
             let {revert} = options;
             let newThis = this; // only before getting real newThis
@@ -105,7 +105,7 @@ namespace AsyncChainer {
                 }
             }
 
-            let listener = (resolve: (value?: T | Thenable<T>) => void, reject: (error?: any) => void) => {
+            let listener = (resolve: (value?: T | PromiseLike<T>) => void, reject: (error?: any) => void) => {
                 this[resolveKey] = resolve; // newThis is unavailable at construction
                 this[rejectKey] = reject;
                 this[revertKey] = revert;
@@ -119,7 +119,7 @@ namespace AsyncChainer {
                             return;
                         }
                         newThis[modifiableKey] = false; // newThis may not be obtained yet but every assignation will be reassigned after obtaining
-                        let sequence = Promise.resolve<void>();
+                        let sequence = Promise.resolve();
                         if (revert) {
                             sequence = sequence.then(() => revert("resolved"));
                         }
@@ -130,7 +130,7 @@ namespace AsyncChainer {
                             return;
                         }
                         newThis[modifiableKey] = false;
-                        let sequence = Promise.resolve<void>();
+                        let sequence = Promise.resolve();
                         if (revert) {
                             sequence = sequence.then(() => revert("rejected"));
                         }
@@ -201,7 +201,7 @@ namespace AsyncChainer {
 
         [resolveCancelKey]() {
             this[modifiableKey] = false;
-            let sequence = Promise.resolve<void>();
+            let sequence = Promise.resolve();
             if (this[revertKey]) {
                 sequence = sequence.then(() => this[revertKey]("canceled"));
             }
@@ -263,8 +263,8 @@ namespace AsyncChainer {
             // }
         }
 
-        queue<U>(callback?: () => U | Thenable<U>, options: ContractOptionBag = {}) {
-            let promise: U | Thenable<U>
+        queue<U>(callback?: () => U | PromiseLike<U>, options: ContractOptionBag = {}) {
+            let promise: U | PromiseLike<U>
             if (typeof callback === "function") {
                 promise = callback();
             }
@@ -324,7 +324,7 @@ namespace AsyncChainer {
     export class AsyncQueueItem<T> extends Contract<T> {
         get context() { return <AsyncContext<any>>this[contextKey] }
 
-        constructor(init: (resolve: (value?: T | Thenable<T>) => void, reject: (reason?: any) => void) => void, options: AsyncQueueConstructionOptionBag) {
+        constructor(init: (resolve: (value?: T | PromiseLike<T>) => void, reject: (reason?: any) => void) => void, options: AsyncQueueConstructionOptionBag) {
             if (!(options.context instanceof AsyncContext)) {
                 throw new Error("An AsyncContext object must be given by `options.context`.");
             }
@@ -338,13 +338,13 @@ namespace AsyncChainer {
             return newThis;
         }
         
-        queue<U>(onfulfilled?: (value: T) => U | Thenable<U>, options: AsyncQueueOptionBag = {}) {
+        queue<U>(onfulfilled?: (value: T) => U | PromiseLike<U>, options: AsyncQueueOptionBag = {}) {
             options = util.assign<any>({ behaviorOnCancellation: "pass" }, options);
             return this.then(onfulfilled, undefined, options);
         }
 
-        then<U>(onfulfilled?: (value: T) => U | Thenable<U>, onrejected?: (error: any) => U | Thenable<U>, options: AsyncQueueOptionBag = {}) {
-            let promise: U | Thenable<U>;
+        then<U>(onfulfilled?: (value: T) => U | PromiseLike<U>, onrejected?: (error: any) => U | PromiseLike<U>, options: AsyncQueueOptionBag = {}) {
+            let promise: U | PromiseLike<U>;
             options = util.assign<any>({ behaviorOnCancellation: "none" }, options);
 
             let output = new AsyncQueueItem<U>((resolve, reject) => {
@@ -397,7 +397,7 @@ namespace AsyncChainer {
                 })
             }, {
                 revert: (status) => {
-                    let sequence = Promise.resolve<void>();
+                    let sequence = Promise.resolve();
                     if (status === "canceled" && promise && typeof promise[cancelKey] === "function") {
                         sequence = sequence.then(() => (<Contract<U>>promise)[cancelKey]());
                     }
@@ -412,8 +412,8 @@ namespace AsyncChainer {
             return output;
         }
 
-        catch<U>(onrejected?: (error: any) => U | Thenable<U>, options: ContractOptionBag = {}) {
-            let promise: U | Thenable<U>;
+        catch<U>(onrejected?: (error: any) => U | PromiseLike<U>, options: ContractOptionBag = {}) {
+            let promise: U | PromiseLike<U>;
             options = util.assign<any>({}, options);
 
             let output = new AsyncQueueItem((resolve, reject) => {
@@ -429,7 +429,7 @@ namespace AsyncChainer {
                 })
             }, {
                 revert: () => {
-                    let sequence = Promise.resolve<void>();
+                    let sequence = Promise.resolve();
                     if (promise && typeof promise[cancelKey] === "function") {
                         sequence = sequence.then(() => (<Contract<U>>promise)[cancelKey]());
                     }
@@ -448,7 +448,7 @@ namespace AsyncChainer {
 
     // better name? this can be used when a single contract only is needed
     export class AsyncFeed<T> extends Contract<T> {
-        constructor(init: (resolve: (value?: T | Thenable<T>) => Promise<void>, reject: (reason?: any) => Promise<void>, controller: ContractController) => void, options: ContractOptionBag = {}) {
+        constructor(init: (resolve: (value?: T | PromiseLike<T>) => Promise<void>, reject: (reason?: any) => Promise<void>, controller: ContractController) => void, options: ContractOptionBag = {}) {
             let newThis = window.SubclassJ ? SubclassJ.getNewThis(AsyncFeed, Contract, [init, options]) : this;
             if (!window.SubclassJ) {
                 super(init, options);
@@ -463,6 +463,6 @@ namespace AsyncChainer {
     // optional module export
     declare var module: any;
     if (typeof module !== "undefined" && module.exports) {
-        module.exports = AsyncChainer;
+        module.exports.default = AsyncChainer;
     }
 }

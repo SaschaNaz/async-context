@@ -5,4 +5,5 @@ sources/*.d.ts
 sample/*.js
 sample/*.js.map
 **/.vscode/settings.json
+**/built/
 node_modules/
