@@ -4,6 +4,7 @@
         "module": "commonjs",
         "noImplicitAny": true,
         "sourceMap": true,
+        "declaration": true,
         "outDir": "built/"
     },
     "files": [
