@@ -6,4 +6,6 @@ sample/*.js
 sample/*.js.map
 **/.vscode/settings.json
 **/built/
+test/*.js
+test/*.js.map
 node_modules/
