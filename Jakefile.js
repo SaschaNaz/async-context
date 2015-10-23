@@ -23,23 +23,37 @@ task("build-testutil", function () {
     });
 }, jakeAsyncTaskOptionBag);
 
-desc("test", ["local", "build-test"], function () {
+desc("test");
+task("test", ["default"], function () {
     jake.exec(["mocha"], jakeExecOptionBag, function () {
         complete();
     });
-}, jakeAsyncTaskOptionBag)
+}, jakeAsyncTaskOptionBag);
+
+desc("sample");
+task("sample", function () {
+    jake.exec(["tsc -p sample"], jakeExecOptionBag, function () {
+        complete();
+    });
+}, jakeAsyncTaskOptionBag);
 
 desc("local");
 task("local", function () {
     jake.exec(["tsc"], jakeExecOptionBag, function () {
+        var ts = "built/async-context.js";
+        var tsContents = fs.readFileSync("built/async-context.js");
+        fs.writeFileSync("built/async-context-modular.js", tsContents + `
+if (typeof module !== "undefined" && module.exports) {
+    module.exports.default = AsyncChainer;
+}`);
+        
         var dts = "built/async-context.d.ts";
         var dtsContents = fs.readFileSync("built/async-context.d.ts");
-        // export declare namespace AsyncChainer
-        fs.writeFileSync(dts, dtsContents + "\r\nexport default AsyncChainer;")
+        fs.writeFileSync("built/async-context-modular.d.ts", dtsContents + "\r\nexport default AsyncChainer;");
         complete();
     })
 }, jakeAsyncTaskOptionBag);
 
-task("default", ["local"], function () {
+task("default", ["local", "build-test", "build-testutil", "sample"], function () {
 
 });

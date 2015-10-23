@@ -248,7 +248,7 @@ namespace AsyncChainer {
                 },    
                 deferCancellation: options.deferCancellation
             });
-            Promise.resolve().then(() => callback(this));
+            Promise.resolve().then(() => callback(this)).catch((error) => this[rejectFeederKey](error));
         }
 
         [cancelAllKey]() {
@@ -458,11 +458,5 @@ namespace AsyncChainer {
         cancel(): Promise<void> {
             return this[cancelKey]();
         }
-    }
-    
-    // optional module export
-    declare var module: any;
-    if (typeof module !== "undefined" && module.exports) {
-        module.exports.default = AsyncChainer;
     }
 }

@@ -13,6 +13,7 @@ declare var error2Run: HTMLInputElement;
 declare var error2Cancel: HTMLInputElement;
 declare var error3Run: HTMLInputElement;
 declare var error3Cancel: HTMLInputElement;
+declare var error4Run: HTMLInputElement;
 
 import AsyncContext = AsyncChainer.AsyncContext;
 import AsyncFeed = AsyncChainer.AsyncFeed;
@@ -221,5 +222,16 @@ waitEvent(document, "DOMContentLoaded").then(() => {
         subscribeEvent(error3Cancel, "click", () => {
             waiter.cancel().catch((error) => alert(error));
         })
+    }
+    
+    {
+        let errorWaiter = function errorWaiter() {
+            return new AsyncContext<void>((context) => {
+                throw new Error("wow4");
+            }).feed()
+        };
+        subscribeEvent(error4Run, "click", () => {
+            errorWaiter().catch((error) => alert(error));
+        });
     }
 });

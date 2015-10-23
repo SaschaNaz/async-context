@@ -3,7 +3,7 @@
 "use strict"
 import * as chai from "chai"
 
-import AsyncChainer from "../built/async-context";
+import AsyncChainer from "../built/async-context-modular";
 import AsyncContext = AsyncChainer.AsyncContext;
 import AsyncFeed = AsyncChainer.AsyncFeed;
 

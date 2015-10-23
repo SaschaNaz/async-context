@@ -25,7 +25,7 @@
 
     "tasks": [
         {
-            "taskName": "local",
+            "taskName": "default",
             "args": [],
             "isBuildCommand": true,
             "problemMatcher": "$tsc"
