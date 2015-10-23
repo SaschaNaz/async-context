@@ -41,3 +41,5 @@ declare namespace AsyncChainer {
         cancel(): Promise<void>;
     }
 }
+
+export default AsyncChainer;
