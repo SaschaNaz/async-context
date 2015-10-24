@@ -14,6 +14,10 @@ declare var error2Cancel: HTMLInputElement;
 declare var error3Run: HTMLInputElement;
 declare var error3Cancel: HTMLInputElement;
 declare var error4Run: HTMLInputElement;
+declare var error5Run: HTMLInputElement;
+declare var error6Run: HTMLInputElement;
+declare var error7Run: HTMLInputElement;
+declare var error8Run: HTMLInputElement;
 
 import AsyncContext = AsyncChainer.AsyncContext;
 import AsyncFeed = AsyncChainer.AsyncFeed;
@@ -177,7 +181,7 @@ waitEvent(document, "DOMContentLoaded").then(() => {
                         revert: () => { throw new Error("wow") }
                     });
                     context.resolve();
-                }
+                }   
                 catch (e) {
                     context.reject(e);
                 }
@@ -231,6 +235,55 @@ waitEvent(document, "DOMContentLoaded").then(() => {
             }).feed()
         };
         subscribeEvent(error4Run, "click", () => {
+            errorWaiter().catch((error) => alert(error));
+        });
+    }
+    
+    {
+        let errorWaiter = function errorWaiter() {
+            return new AsyncContext<void>(async (context) => {
+                await context.queue(() => Promise.reject(new Error("wow5")));
+            }).feed()
+        };
+        subscribeEvent(error5Run, "click", () => {
+            errorWaiter().catch((error) => alert(error));
+        });
+    }
+    
+    
+    {
+        let errorWaiter = function errorWaiter() {
+            return new Contract<void>((context) => {
+                throw new Error("wow6");
+            });
+        };
+        subscribeEvent(error6Run, "click", () => {
+            errorWaiter().catch((error) => alert(error));
+        });
+    }
+
+    {
+        let errorWaiter = function errorWaiter() {
+            return new AsyncContext<void>(async (context) => {
+                await context.queue(() => {
+                    throw new Error("wow7")
+                });
+            }).feed()
+        };
+        subscribeEvent(error7Run, "click", () => {
+            errorWaiter().catch((error) => alert(error));
+        });
+    }
+    
+    {
+        let errorWaiter = function errorWaiter() {
+            return new AsyncContext<void>(async (context) => {
+                await context.queue().queue(() => {
+                    throw new Error("wow8")
+                });
+            }).feed()
+        };
+        subscribeEvent(error8Run, "click", () => {
             errorWaiter().catch((error) => alert(error));
         });
     }

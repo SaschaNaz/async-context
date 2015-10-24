@@ -13,7 +13,7 @@ namespace AsyncChainer {
             return target;
         }
     }
-    
+
     let globalObject: any;
     declare var global: any;
     if (typeof self !== "undefined") {
@@ -71,7 +71,7 @@ namespace AsyncChainer {
 
     export interface ContractOptionBag {
         /** Reverting listener for a contract. This will always be called after a contract gets finished in any status. */
-        revert?: (status: string) => void | PromiseLike<void>;
+        revert?: (status: string) => any | PromiseLike<any>;
         // silentOnCancellation?: boolean;
         // How about returning Cancellation object automatically cancel chained contracts? - What about promises then? Unintuitive.
 
@@ -80,8 +80,8 @@ namespace AsyncChainer {
 
         // for async cancellation process
         deferCancellation?: boolean;
-        
-        precancel?: () => void | PromiseLike<void>;
+
+        precancel?: () => any | PromiseLike<any>;
     }
 
     export interface ContractController {
@@ -113,31 +113,37 @@ namespace AsyncChainer {
                 this[canceledKey] = false;
                 this[optionsKey] = options;
 
-                init(
-                    (value) => {
-                        if (!newThis[modifiableKey]) {
-                            return;
-                        }
-                        newThis[modifiableKey] = false; // newThis may not be obtained yet but every assignation will be reassigned after obtaining
-                        let sequence = Promise.resolve();
-                        if (revert) {
-                            sequence = sequence.then(() => revert("resolved"));
-                        }
-                        return sequence.then(() => resolve(value)).catch((error) => reject(error)); // reject when revert failed
-                    },
-                    (error) => {
-                        if (!newThis[modifiableKey]) {
-                            return;
-                        }
-                        newThis[modifiableKey] = false;
-                        let sequence = Promise.resolve();
-                        if (revert) {
-                            sequence = sequence.then(() => revert("rejected"));
-                        }
-                        return sequence.then(() => reject(error)).catch((error) => reject(error));
-                    },
-                    controller
-                )
+                try {
+                    init(
+                        (value) => {
+                            if (!newThis[modifiableKey]) {
+                                return;
+                            }
+                            newThis[modifiableKey] = false; // newThis may not be obtained yet but every assignation will be reassigned after obtaining
+                            let sequence = Promise.resolve();
+                            if (revert) {
+                                sequence = sequence.then(() => revert("resolved"));
+                            }
+                            return sequence.then(() => resolve(value)).catch((error) => reject(error)); // reject when revert failed
+                        },
+                        (error) => {
+                            if (!newThis[modifiableKey]) {
+                                return;
+                            }
+                            newThis[modifiableKey] = false;
+                            let sequence = Promise.resolve();
+                            if (revert) {
+                                sequence = sequence.then(() => revert("rejected"));
+                            }
+                            return sequence.then(() => reject(error)).catch((error) => reject(error));
+                        },
+                        controller
+                    )
+                }
+                catch (error) {
+                    // error when calling init
+                    reject(error);
+                }
             };
 
             newThis = window.SubclassJ ? SubclassJ.getNewThis(Contract, Promise, [listener]) : this;
@@ -221,33 +227,33 @@ namespace AsyncChainer {
                 this[rejectFeederKey] = reject;
                 this[feederControllerKey] = controller;
             }, {
-                revert: (status) => {
-                    this[modifiableKey] = false;
-                    let sequence = Promise.resolve();
-                    if (status !== "canceled") {
-                        sequence = sequence.then(() => this[cancelAllKey]());
-                    }
-                    return sequence.then(() => {
-                        if (options.revert) {
-                            return options.revert(status);
+                    revert: (status) => {
+                        this[modifiableKey] = false;
+                        let sequence = Promise.resolve();
+                        if (status !== "canceled") {
+                            sequence = sequence.then(() => this[cancelAllKey]());
                         }
-                    });
-                    /*
-                    TODO: feed().cancel() does not serially call revert() when deferCancellation and this blocks canceling queue item 
-                    proposal 1: add oncancel(or precancel) on ContractOptionBag
-                    proposal 2: add flag to call revert() earlier even when deferCancellation
-                    */
-                },
-                precancel: () => {
-                    // still modifiable at the time of precancel
-                    return Promise.resolve().then(() => {
-                        if (options.precancel) {
-                            return options.precancel();
-                        }
-                    }).then(() => this[cancelAllKey]());
-                },    
-                deferCancellation: options.deferCancellation
-            });
+                        return sequence.then(() => {
+                            if (options.revert) {
+                                return options.revert(status);
+                            }
+                        });
+                        /*
+                        TODO: feed().cancel() does not serially call revert() when deferCancellation and this blocks canceling queue item 
+                        proposal 1: add oncancel(or precancel) on ContractOptionBag
+                        proposal 2: add flag to call revert() earlier even when deferCancellation
+                        */
+                    },
+                    precancel: () => {
+                        // still modifiable at the time of precancel
+                        return Promise.resolve().then(() => {
+                            if (options.precancel) {
+                                return options.precancel();
+                            }
+                        }).then(() => this[cancelAllKey]());
+                    },
+                    deferCancellation: options.deferCancellation
+                });
             Promise.resolve().then(() => callback(this)).catch((error) => this[rejectFeederKey](error));
         }
 
@@ -264,23 +270,23 @@ namespace AsyncChainer {
         }
 
         queue<U>(callback?: () => U | PromiseLike<U>, options: ContractOptionBag = {}) {
-            let promise: U | PromiseLike<U>
+            let promise: Promise<U>
             if (typeof callback === "function") {
-                promise = callback();
+                promise = Promise.resolve().then(() => callback()); // promise will be rejected gracely when callback() fails
             }
             let output = new AsyncQueueItem<U>((resolve, reject) => {
                 // resolve/reject must be called after whole promise chain is resolved
                 // so that the queue item keep being modifiable until resolving whole chain 
                 Promise.resolve(promise).then(resolve, reject);
             }, {
-                revert: (status) => {
-                    if (status === "canceled" && promise && typeof promise[cancelKey] === "function") {
-                        (<Contract<U>>promise)[cancelKey]();
-                    }
-                    this[removeFromQueueKey](output);
-                },
-                context: this
-            });
+                    revert: (status) => {
+                        if (status === "canceled" && promise && typeof promise[cancelKey] === "function") {
+                            (<Contract<U>>promise)[cancelKey]();
+                        }
+                        this[removeFromQueueKey](output);
+                    },
+                    context: this
+                });
             this[queueKey].push(output);
             return output; // return an object that support chaining
         }
@@ -337,19 +343,18 @@ namespace AsyncChainer {
             newThis[cancellationAwaredKey] = this[cancellationAwaredKey] = false;
             return newThis;
         }
-        
+
         queue<U>(onfulfilled?: (value: T) => U | PromiseLike<U>, options: AsyncQueueOptionBag = {}) {
             options = util.assign<any>({ behaviorOnCancellation: "pass" }, options);
             return this.then(onfulfilled, undefined, options);
         }
 
         then<U>(onfulfilled?: (value: T) => U | PromiseLike<U>, onrejected?: (error: any) => U | PromiseLike<U>, options: AsyncQueueOptionBag = {}) {
-            let promise: U | PromiseLike<U>;
+            let promise: Promise<U>;
             options = util.assign<any>({ behaviorOnCancellation: "none" }, options);
 
             let output = new AsyncQueueItem<U>((resolve, reject) => {
-                super.then((value) => {
-                    this.context[queueKey].push(output);
+                let resolveWithCancellationCheck = (value?: T) => {
                     /*
                     What should happen when previous queue is resolved after context cancellation?
                     1. check cancellation and resolve with Cancellation object
@@ -391,58 +396,49 @@ namespace AsyncChainer {
                         }
                     }
                     if (typeof onfulfilled === "function") {
-                        promise = onfulfilled(value);
+                        promise = Promise.resolve().then(() => onfulfilled(value)); // gracely reject when fail
                     }
                     Promise.resolve(promise).then(resolve, reject);
-                })
+                    // resolve should be called only when full promise chain is resolved
+                    // so that .revert can only be called when all is over 
+                };
+
+                super.then(
+                    (value) => {
+                        this.context[queueKey].push(output);
+                        resolveWithCancellationCheck(value);
+                    },
+                    (error) => {
+                        this.context[queueKey].push(output);
+
+                        if (this.context.canceled) {
+                            resolveWithCancellationCheck();
+                            return; // no onrejected call when canceled
+                        }
+                        if (typeof onrejected === "function") {
+                            promise = Promise.resolve().then(() => onrejected(error));
+                        }
+                        Promise.resolve(promise).then(resolve, reject);
+                    })
             }, {
-                revert: (status) => {
-                    let sequence = Promise.resolve();
-                    if (status === "canceled" && promise && typeof promise[cancelKey] === "function") {
-                        sequence = sequence.then(() => (<Contract<U>>promise)[cancelKey]());
-                    }
-                    sequence = sequence.then(() => this.context[removeFromQueueKey](output));
-                    if (options.revert) {
-                        sequence = sequence.then(() => options.revert(status));
-                    }
-                    return sequence;
-                },
-                context: this.context
-            });
+                    revert: (status) => {
+                        let sequence = Promise.resolve();
+                        if (status === "canceled" && promise && typeof promise[cancelKey] === "function") {
+                            sequence = sequence.then(() => (<Contract<U>>promise)[cancelKey]());
+                        }
+                        sequence = sequence.then(() => this.context[removeFromQueueKey](output));
+                        if (options.revert) {
+                            sequence = sequence.then(() => options.revert(status));
+                        }
+                        return sequence;
+                    },
+                    context: this.context
+                });
             return output;
         }
 
         catch<U>(onrejected?: (error: any) => U | PromiseLike<U>, options: ContractOptionBag = {}) {
-            let promise: U | PromiseLike<U>;
-            options = util.assign<any>({}, options);
-
-            let output = new AsyncQueueItem((resolve, reject) => {
-                super.catch((error) => {
-                    if (this.context.canceled) {
-                        resolve(Cancellation);
-                        return; // no catch when canceled
-                    }
-                    if (typeof onrejected === "function") {
-                        promise = onrejected(error);
-                    }
-                    resolve(promise);
-                })
-            }, {
-                revert: () => {
-                    let sequence = Promise.resolve();
-                    if (promise && typeof promise[cancelKey] === "function") {
-                        sequence = sequence.then(() => (<Contract<U>>promise)[cancelKey]());
-                    }
-                    sequence = sequence.then(() => this.context[removeFromQueueKey](output));
-                    if (options.revert) {
-                        sequence = sequence.then(() => options.revert(status));
-                    }
-                    return sequence;
-                },
-                context: this.context
-            });
-            this.context[queueKey].push(output);
-            return output;
+            return this.then(undefined, onrejected, options);
         }
     }
 
