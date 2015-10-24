@@ -2,9 +2,9 @@ declare namespace AsyncChainer {
     var Cancellation: any;
     interface ContractOptionBag {
         /** Reverting listener for a contract. This will always be called after a contract gets finished in any status. */
-        revert?: (status: string) => void | PromiseLike<void>;
+        revert?: (status: string) => any | PromiseLike<any>;
         deferCancellation?: boolean;
-        precancel?: () => void | PromiseLike<void>;
+        precancel?: () => any | PromiseLike<any>;
     }
     interface ContractController {
         canceled: boolean;
@@ -34,7 +34,7 @@ declare namespace AsyncChainer {
         constructor(init: (resolve: (value?: T | PromiseLike<T>) => void, reject: (reason?: any) => void) => void, options: AsyncQueueConstructionOptionBag);
         queue<U>(onfulfilled?: (value: T) => U | PromiseLike<U>, options?: AsyncQueueOptionBag): AsyncQueueItem<U>;
         then<U>(onfulfilled?: (value: T) => U | PromiseLike<U>, onrejected?: (error: any) => U | PromiseLike<U>, options?: AsyncQueueOptionBag): AsyncQueueItem<U>;
-        catch<U>(onrejected?: (error: any) => U | PromiseLike<U>, options?: ContractOptionBag): AsyncQueueItem<{}>;
+        catch<U>(onrejected?: (error: any) => U | PromiseLike<U>, options?: ContractOptionBag): AsyncQueueItem<U>;
     }
     class AsyncFeed<T> extends Contract<T> {
         constructor(init: (resolve: (value?: T | PromiseLike<T>) => Promise<void>, reject: (reason?: any) => Promise<void>, controller: ContractController) => void, options?: ContractOptionBag);
