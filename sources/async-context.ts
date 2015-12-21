@@ -1,4 +1,4 @@
-namespace AsyncChainer {
+namespace Cancellables {
     namespace util {
         export function assign<T>(target: T, ...sources: any[]) {
             if ((<any>Object).assign)
@@ -14,62 +14,46 @@ namespace AsyncChainer {
         }
     }
 
-    let globalObject: any;
-    declare var global: any;
-    if (typeof self !== "undefined") {
-        globalObject = self;
-    }
-    else if (typeof global !== "undefined") {
-        globalObject = global;
-    }
-
-    let symbolFunction = globalObject.Symbol;
-    let symbolSupported = typeof symbolFunction === "function" && typeof symbolFunction() === "symbol";
-    function generateSymbolKey(key: string) {
-        if (symbolSupported) {
-            return symbolFunction(key);
-        }
-        return btoa(Math.random().toFixed(16));
-    }
-
-    export var Cancellation: any = new Proxy(() => { }, {
+    export var cancellation: any = new Proxy(() => { }, {
         set: () => false,
-        get: (target, property) => property !== "then" ? Cancellation : undefined, // non-PromiseLike 
-        construct: () => Cancellation,
-        apply: () => Cancellation
+        get: (target: any, property: any) => property !== "then" ? cancellation : undefined, // non-PromiseLike 
+        construct: () => cancellation,
+        apply: () => cancellation
     });
 
-    /*
-        Keys for Contract class 
-    */
-    let resolveKey = generateSymbolKey("resolve");
-    let rejectKey = generateSymbolKey("reject");
-    let cancelKey = generateSymbolKey("cancel");
-    let resolveCancelKey = generateSymbolKey("cancel-resolve");
-    let modifiableKey = generateSymbolKey("modifiable");
-    let revertKey = generateSymbolKey("revert");
-    let canceledKey = generateSymbolKey("canceled");
-    let thisKey = generateSymbolKey("this");
-    let optionsKey = generateSymbolKey("options");
+    export var cancelSymbol = Symbol("cancel");
 
-    /*
-        Keys for AsyncContext
-    */
-    let feederKey = generateSymbolKey("feeder");
-    let resolveFeederKey = generateSymbolKey("resolve-feeder");
-    let rejectFeederKey = generateSymbolKey("reject-feeder");
-    let feederControllerKey = generateSymbolKey("feeder-controller")
-    let queueKey = generateSymbolKey("queue");
-    let cancelAllKey = generateSymbolKey("cancel-all")
-    let removeFromQueueKey = generateSymbolKey("remove-from-queue");
+    //     /*
+    //         Keys for Contract class 
+    //     */
+    //     let resolveKey = generateSymbolKey("resolve");
+    //     let rejectKey = generateSymbolKey("reject");
+    //     let cancelKey = generateSymbolKey("cancel");
+    //     let resolveCancelKey = generateSymbolKey("cancel-resolve");
+    //     let modifiableKey = generateSymbolKey("modifiable");
+    //     let revertKey = generateSymbolKey("revert");
+    //     let canceledKey = generateSymbolKey("canceled");
+    //     let thisKey = generateSymbolKey("this");
+    //     let optionsKey = generateSymbolKey("options");
+    // 
+    //     /*
+    //         Keys for AsyncContext
+    //     */
+    //     let feederKey = generateSymbolKey("feeder");
+    //     let resolveFeederKey = generateSymbolKey("resolve-feeder");
+    //     let rejectFeederKey = generateSymbolKey("reject-feeder");
+    //     let feederControllerKey = generateSymbolKey("feeder-controller")
+    //     let queueKey = generateSymbolKey("queue");
+    //     let cancelAllKey = generateSymbolKey("cancel-all")
+    //     let removeFromQueueKey = generateSymbolKey("remove-from-queue");
+    // 
+    //     /*
+    //         Keys for AsyncQueueItem
+    //     */
+    //     let contextKey = generateSymbolKey("context");
+    //     let cancellationAwaredKey = generateSymbolKey("cancellation-awared")
 
-    /*
-        Keys for AsyncQueueItem
-    */
-    let contextKey = generateSymbolKey("context");
-    let cancellationAwaredKey = generateSymbolKey("cancellation-awared")
-
-    export interface ContractOptionBag {
+    export interface CancellableOptionBag {
         /** Reverting listener for a contract. This will always be called after a contract gets finished in any status. */
         revert?: (status: string) => any | PromiseLike<any>;
         // silentOnCancellation?: boolean;
@@ -84,42 +68,50 @@ namespace AsyncChainer {
         precancel?: () => any | PromiseLike<any>;
     }
 
-    export interface ContractController {
+    export interface CancellableController {
         canceled: boolean;
         confirmCancellation: () => Promise<void>;
     }
 
-    export class Contract<T> extends Promise<T> {
-        get canceled() { return <boolean>this[canceledKey] }
+    export class Cancellable<T> extends Promise<T> {
+        get canceled() { return this._canceled }
+        _canceled: boolean;
+        _modifiable: boolean;
 
-        constructor(init: (resolve: (value?: T | PromiseLike<T>) => Promise<void>, reject: (reason?: any) => Promise<void>, controller: ContractController) => void, options: ContractOptionBag = {}) {
-            options = util.assign<ContractOptionBag>({}, options); // pass cancellation by default
-            let {revert} = options;
+        _resolve: <T>(value?: T | PromiseLike<T>) => void;
+        _reject: (reason?: any) => void;
+        _revert: (status: string) => any;
+        
+        _options: CancellableOptionBag;
+
+        constructor(init: (resolve: (value?: T | PromiseLike<T>) => Promise<void>, reject: (reason?: any) => Promise<void>, controller: CancellableController) => void, options?: CancellableOptionBag) {
+            options = util.assign<CancellableOptionBag>({}, options); // pass cancellation by default
+            let revert = options.revert;
             let newThis = this; // only before getting real newThis
-            let controller: ContractController = {
-                get canceled() { return newThis[canceledKey] },
+            let controller: CancellableController = {
+                get canceled() { return newThis._canceled },
                 confirmCancellation: () => {
-                    this[optionsKey].deferCancellation = false;
-                    this[canceledKey] = true;
-                    return this[resolveCancelKey]();
+                    this._options.deferCancellation = false;
+                    this._canceled = true;
+                    return this._resolveCancel();
                 }
             }
 
             let listener = (resolve: (value?: T | PromiseLike<T>) => void, reject: (error?: any) => void) => {
-                this[resolveKey] = resolve; // newThis is unavailable at construction
-                this[rejectKey] = reject;
-                this[revertKey] = revert;
-                this[modifiableKey] = true;
-                this[canceledKey] = false;
-                this[optionsKey] = options;
+                this._resolve = resolve; // newThis is unavailable at construction
+                this._reject = reject;
+                this._revert = revert;
+                this._modifiable = true;
+                this._canceled = false;
+                this._options = options;
 
                 try {
                     init(
                         (value) => {
-                            if (!newThis[modifiableKey]) {
+                            if (!newThis._modifiable) {
                                 return;
                             }
-                            newThis[modifiableKey] = false; // newThis may not be obtained yet but every assignation will be reassigned after obtaining
+                            newThis._modifiable = false; // newThis may not be obtained yet but every assignation will be reassigned after obtaining
                             let sequence = Promise.resolve();
                             if (revert) {
                                 sequence = sequence.then(() => revert("resolved"));
@@ -127,10 +119,10 @@ namespace AsyncChainer {
                             return sequence.then(() => resolve(value)).catch((error) => reject(error)); // reject when revert failed
                         },
                         (error) => {
-                            if (!newThis[modifiableKey]) {
+                            if (!newThis._modifiable) {
                                 return;
                             }
-                            newThis[modifiableKey] = false;
+                            newThis._modifiable = false;
                             let sequence = Promise.resolve();
                             if (revert) {
                                 sequence = sequence.then(() => revert("rejected"));
@@ -146,19 +138,19 @@ namespace AsyncChainer {
                 }
             };
 
-            newThis = window.SubclassJ ? SubclassJ.getNewThis(Contract, Promise, [listener]) : this;
+            newThis = window.SubclassJ ? SubclassJ.getNewThis(Cancellable, Promise, [listener]) : this;
             if (!window.SubclassJ) {
                 super(listener);
             }
 
-            newThis[resolveKey] = this[resolveKey];
-            newThis[rejectKey] = this[rejectKey];
+            newThis._resolve = this._resolve;
+            newThis._reject = this._reject;
 
             // guarantee every assignation before obtaining newThis be applied on it
-            newThis[revertKey] = this[revertKey]
-            newThis[modifiableKey] = this[modifiableKey];
-            newThis[canceledKey] = this[canceledKey];
-            newThis[optionsKey] = this[optionsKey];
+            newThis._revert = this._revert;
+            newThis._modifiable = this._modifiable;
+            newThis._canceled = this._canceled;
+            newThis._options = this._options;
 
             return newThis;
             //super(listener);
@@ -182,18 +174,18 @@ namespace AsyncChainer {
         
         */
 
-        [cancelKey]() {
-            if (!this[modifiableKey] || this[canceledKey]) {
+        [cancelSymbol]() {
+            if (!this._modifiable || this._canceled) {
                 return Promise.reject(new Error("Already locked"));
             }
-            this[canceledKey] = true;
+            this._canceled = true;
             let sequence = Promise.resolve();
-            if (this[optionsKey].precancel) {
-                sequence = sequence.then(() => this[optionsKey].precancel());
+            if (this._options.precancel) {
+                sequence = sequence.then(() => this._options.precancel());
                 // precancel error should be catched by .cancel().catch()
             }
-            if (!this[optionsKey].deferCancellation) {
-                return sequence.then(() => this[resolveCancelKey]());
+            if (!this._options.deferCancellation) {
+                return sequence.then(() => this._resolveCancel());
             }
             else {
                 return sequence.then(() => this.then<void>());
@@ -205,33 +197,43 @@ namespace AsyncChainer {
             // defer: should cancellation promise be resolved before target contract? Not sure
         }
 
-        [resolveCancelKey]() {
-            this[modifiableKey] = false;
+        _resolveCancel() {
+            this._modifiable = false;
             let sequence = Promise.resolve();
-            if (this[revertKey]) {
-                sequence = sequence.then(() => this[revertKey]("canceled"));
+            if (this._revert) {
+                sequence = sequence.then(() => this._revert("canceled"));
             }
-            return sequence.then(() => this[resolveKey](Cancellation)).catch((error) => this[rejectKey](error));
+            return sequence.then(() => this._resolve(cancellation)).catch((error) => this._reject(error));
             // won't resolve with Cancellation when already resolved 
         }
     }
 
     export class AsyncContext<T> {
-        constructor(callback: (context: AsyncContext<T>) => any, options: ContractOptionBag = {}) {
-            options = util.assign<ContractOptionBag>({}, options);
-            this[queueKey] = [];
-            this[modifiableKey] = true;
-            this[canceledKey] = false;
-            this[feederKey] = new AsyncFeed((resolve, reject, controller) => {
-                this[resolveFeederKey] = resolve;
-                this[rejectFeederKey] = reject;
-                this[feederControllerKey] = controller;
+        _canceled: boolean;
+        _modifiable: boolean;
+        
+        _queue: AsyncQueueItem<any>[];
+        _feeder: AsyncFeed<T>;
+        _feederController: CancellableController;
+        
+        _resolveFeeder: <T>(value?: T | PromiseLike<T>) => Promise<void>;
+        _rejectFeeder: (reason?: any) => Promise<void>;
+
+        constructor(callback: (context: AsyncContext<T>) => any, options?: CancellableOptionBag) {
+            options = util.assign<CancellableOptionBag>({}, options);
+            this._queue = [];
+            this._modifiable = true;
+            this._canceled = false;
+            this._feeder = new AsyncFeed<T>((resolve, reject, controller) => {
+                this._resolveFeeder = resolve;
+                this._rejectFeeder = reject;
+                this._feederController = controller;
             }, {
                     revert: (status) => {
-                        this[modifiableKey] = false;
+                        this._modifiable = false;
                         let sequence = Promise.resolve();
                         if (status !== "canceled") {
-                            sequence = sequence.then(() => this[cancelAllKey]());
+                            sequence = sequence.then(() => this._cancelAll());
                         }
                         return sequence.then(() => {
                             if (options.revert) {
@@ -250,26 +252,27 @@ namespace AsyncChainer {
                             if (options.precancel) {
                                 return options.precancel();
                             }
-                        }).then(() => this[cancelAllKey]());
+                        }).then(() => this._cancelAll());
                     },
                     deferCancellation: options.deferCancellation
                 });
-            Promise.resolve().then(() => callback(this)).catch((error) => this[rejectFeederKey](error));
+            Promise.resolve().then(() => callback(this)).catch((error) => this._rejectFeeder(error));
         }
 
-        [cancelAllKey]() {
-            return Promise.all((<AsyncQueueItem<any>[]>this[queueKey]).map((item) => {
-                if (item[modifiableKey] && !item[canceledKey]) {
-                    return item[cancelKey]()
+        _cancelAll() {
+            return Promise.all(this._queue.map((item) => {
+                if (item._modifiable && !item._canceled) {
+                    return item[cancelSymbol]() as Promise<void>
                 }
-            }))
+            })).then<void>();
 
             // for (let item of this[queueKey]) {
             //     (<Contract<any>>item)[cancelKey]();
             // }
         }
 
-        queue<U>(callback?: () => U | PromiseLike<U>, options: ContractOptionBag = {}) {
+        /* TODO: `options` should be utilized */
+        queue<U>(callback?: () => U | PromiseLike<U>, options?: CancellableOptionBag) {
             let promise: Promise<U>
             if (typeof callback === "function") {
                 promise = Promise.resolve().then(() => callback()); // promise will be rejected gracely when callback() fails
@@ -280,76 +283,78 @@ namespace AsyncChainer {
                 Promise.resolve(promise).then(resolve, reject);
             }, {
                     revert: (status) => {
-                        if (status === "canceled" && promise && typeof promise[cancelKey] === "function") {
-                            (<Contract<U>>promise)[cancelKey]();
+                        if (status === "canceled" && promise && typeof promise[cancelSymbol] === "function") {
+                            (<Cancellable<U>>promise)[cancelSymbol]();
                         }
-                        this[removeFromQueueKey](output);
+                        this._removeFromQueue(output);
                     },
                     context: this
                 });
-            this[queueKey].push(output);
+            this._queue.push(output);
             return output; // return an object that support chaining
         }
 
-        [removeFromQueueKey](item: AsyncQueueItem<any>) {
-            let queueIndex = this[queueKey].indexOf(item);
-            (<AsyncQueueItem<any>[]>this[queueKey]).splice(queueIndex, 1);
+        _removeFromQueue(item: AsyncQueueItem<any>) {
+            let queueIndex = this._queue.indexOf(item);
+            this._queue.splice(queueIndex, 1);
         }
 
         feed() {
-            return <AsyncFeed<T>>this[feederKey];
+            return this._feeder;
         }
 
         get canceled() {
-            return <boolean>this[feederKey][canceledKey] || <boolean>this[canceledKey];
+            return this._feeder._canceled || this._canceled;
         }
 
         resolve(value?: T): Promise<void> {
-            this[modifiableKey] = false;
-            return this[resolveFeederKey](value);
+            this._modifiable = false;
+            return this._resolveFeeder(value);
         }
         reject(error?: any): Promise<void> {
-            this[modifiableKey] = false;
-            return this[rejectFeederKey](error);
+            this._modifiable = false;
+            return this._rejectFeeder(error);
         }
         cancel(): Promise<void> {
-            this[canceledKey] = true;
-            return this[feederControllerKey].confirmCancellation();
+            this._canceled = true;
+            return this._feederController.confirmCancellation();
         }
     }
 
-    export interface AsyncQueueConstructionOptionBag extends ContractOptionBag {
+    export interface AsyncQueueConstructionOptionBag extends CancellableOptionBag {
         context: AsyncContext<any>;
     }
 
-    export interface AsyncQueueOptionBag extends ContractOptionBag {
+    export interface AsyncQueueOptionBag extends CancellableOptionBag {
         behaviorOnCancellation?: string; // "pass"(default), "silent", "none"
     }
 
     // Can chaining characteristics of AsyncQueueItem be used generally? 
-    export class AsyncQueueItem<T> extends Contract<T> {
-        get context() { return <AsyncContext<any>>this[contextKey] }
+    export class AsyncQueueItem<T> extends Cancellable<T> {
+        get context() { return this._context }
+        _context: AsyncContext<any>;
+        _cancellationAwared: boolean;
 
         constructor(init: (resolve: (value?: T | PromiseLike<T>) => void, reject: (reason?: any) => void) => void, options: AsyncQueueConstructionOptionBag) {
             if (!(options.context instanceof AsyncContext)) {
                 throw new Error("An AsyncContext object must be given by `options.context`.");
             }
-            let newThis = window.SubclassJ ? SubclassJ.getNewThis(AsyncQueueItem, Contract, [init, options]) : this;
+            let newThis = window.SubclassJ ? SubclassJ.getNewThis(AsyncQueueItem, Cancellable, [init, options]) : this;
             if (!window.SubclassJ) {
                 super(init, options);
             }
 
-            newThis[contextKey] = this[contextKey] = options.context;
-            newThis[cancellationAwaredKey] = this[cancellationAwaredKey] = false;
+            newThis._context = this._context = options.context;
+            newThis._cancellationAwared = this._cancellationAwared = false;
             return newThis;
         }
 
-        queue<U>(onfulfilled?: (value: T) => U | PromiseLike<U>, options: AsyncQueueOptionBag = {}) {
+        queue<U>(onfulfilled?: (value: T) => U | PromiseLike<U>, options?: AsyncQueueOptionBag) {
             options = util.assign<any>({ behaviorOnCancellation: "pass" }, options);
             return this.then(onfulfilled, undefined, options);
         }
 
-        then<U>(onfulfilled?: (value: T) => U | PromiseLike<U>, onrejected?: (error: any) => U | PromiseLike<U>, options: AsyncQueueOptionBag = {}) {
+        then<U>(onfulfilled?: (value: T) => U | PromiseLike<U>, onrejected?: (error: any) => U | PromiseLike<U>, options?: AsyncQueueOptionBag) {
             let promise: Promise<U>;
             options = util.assign<any>({ behaviorOnCancellation: "none" }, options);
 
@@ -364,9 +369,9 @@ namespace AsyncChainer {
                     - still too long, should it be default value for queue items?
                     - okay, make it default
                     */
-                    if (this.context.canceled && !this[cancellationAwaredKey]) {
-                        value = Cancellation;
-                        output[cancellationAwaredKey] = true;
+                    if (this.context.canceled && !this._cancellationAwared) {
+                        value = cancellation;
+                        output._cancellationAwared = true;
                         /*
                         TODO: use cancellationAwaredKey so that Cancellation passes only until first behaviorOnCancellation: "none"
                         The key should not on context as it can contain multiple parallel chains
@@ -374,12 +379,12 @@ namespace AsyncChainer {
                         super.then is always asynchronous so `output` is always already obtained
                         */
                     }
-                    if (value === Cancellation) {
+                    if (value === cancellation) {
                         if (options.behaviorOnCancellation === "silent") {
                             return; // never resolve
                         }
                         else if (options.behaviorOnCancellation === "pass") {
-                            resolve(Cancellation);
+                            resolve(cancellation);
                             return; // never call onfulfilled
                             /*
                             TODO: This blocks await expression from receiving Cancellation
@@ -405,11 +410,11 @@ namespace AsyncChainer {
 
                 super.then(
                     (value) => {
-                        this.context[queueKey].push(output);
+                        this.context._queue.push(output);
                         resolveWithCancellationCheck(value);
                     },
                     (error) => {
-                        this.context[queueKey].push(output);
+                        this.context._queue.push(output);
 
                         if (this.context.canceled) {
                             resolveWithCancellationCheck();
@@ -423,10 +428,10 @@ namespace AsyncChainer {
             }, {
                     revert: (status) => {
                         let sequence = Promise.resolve();
-                        if (status === "canceled" && promise && typeof promise[cancelKey] === "function") {
-                            sequence = sequence.then(() => (<Contract<U>>promise)[cancelKey]());
+                        if (status === "canceled" && promise && typeof promise[cancelSymbol] === "function") {
+                            sequence = sequence.then(() => (<Cancellable<U>>promise)[cancelSymbol]());
                         }
-                        sequence = sequence.then(() => this.context[removeFromQueueKey](output));
+                        sequence = sequence.then(() => this.context._removeFromQueue(output));
                         if (options.revert) {
                             sequence = sequence.then(() => options.revert(status));
                         }
@@ -437,22 +442,22 @@ namespace AsyncChainer {
             return output;
         }
 
-        catch<U>(onrejected?: (error: any) => U | PromiseLike<U>, options: ContractOptionBag = {}) {
+        catch<U>(onrejected?: (error: any) => U | PromiseLike<U>, options?: CancellableOptionBag) {
             return this.then(undefined, onrejected, options);
         }
     }
 
     // better name? this can be used when a single contract only is needed
-    export class AsyncFeed<T> extends Contract<T> {
-        constructor(init: (resolve: (value?: T | PromiseLike<T>) => Promise<void>, reject: (reason?: any) => Promise<void>, controller: ContractController) => void, options: ContractOptionBag = {}) {
-            let newThis = window.SubclassJ ? SubclassJ.getNewThis(AsyncFeed, Contract, [init, options]) : this;
+    export class AsyncFeed<T> extends Cancellable<T> {
+        constructor(init: (resolve: (value?: T | PromiseLike<T>) => Promise<void>, reject: (reason?: any) => Promise<void>, controller: CancellableController) => void, options: CancellableOptionBag) {
+            let newThis = window.SubclassJ ? SubclassJ.getNewThis(AsyncFeed, Cancellable, [init, options]) : this;
             if (!window.SubclassJ) {
                 super(init, options);
             }
             return newThis;
         }
         cancel(): Promise<void> {
-            return this[cancelKey]();
+            return this[cancelSymbol]();
         }
     }
 }

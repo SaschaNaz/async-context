@@ -1,6 +1,6 @@
 {
     "compilerOptions": {
-        "target": "ES5",
+        "target": "es6",
         "module": "commonjs",
         "noImplicitAny": true,
         "suppressImplicitAnyIndexErrors": true,
@@ -10,8 +10,6 @@
         "out": "built/async-context.js"
     },
     "files": [
-        "submodules/es6-promise.d.ts",
-        "submodules/es6-proxy.d.ts",
         "submodules/subclassj/subclassj.d.ts",
         "sources/async-context.ts"
     ]
