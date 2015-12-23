@@ -329,13 +329,15 @@ namespace Cancellables {
         _cancellationAwared: boolean;
 
         constructor(init: (resolve: (value?: T | PromiseLike<T>) => void, reject: (reason?: any) => void) => void, options: AsyncQueueConstructionOptionBag) {
-            /* TODO: A Promise subclass must allow constructing only with `init` parameter */
-            if (!(options.context instanceof AsyncContext)) {
+            // A Promise subclass must allow constructing only with `init` parameter
+            // Then `options` must be set after construction to correctly indicate the context
+            if (options && !(options.context instanceof AsyncContext)) {
                 throw new Error("An AsyncContext object must be given by `options.context`.");
             }
             super(init, options);
-
-            this._context = options.context;
+            if (options) {
+                this._context = options.context;
+            }
             this._cancellationAwared = false;
         }
 
@@ -344,92 +346,100 @@ namespace Cancellables {
             return this.then(onfulfilled, undefined, options);
         }
 
-        then<U>(onfulfilled?: (value: T) => U | PromiseLike<U>, onrejected?: (error: any) => U | PromiseLike<U>, options?: AsyncQueueOptionBag) {
-            let promise: Promise<U>;
+        then<U>(onfulfilled?: (value: T) => U | PromiseLike<U>, onrejected?: (error: any) => U | PromiseLike<U>, options?: AsyncQueueOptionBag): AsyncQueueItem<U> {
             options = util.assign<any>({ behaviorOnCancellation: "none" }, options);
+            
+            let resolver: U | PromiseLike<U>;
 
-            let output = new AsyncQueueItem<U>((resolve, reject) => {
-                let resolveWithCancellationCheck = (value?: T) => {
+            let resolveWithCancellationCheck = (value?: T) => {
+                /*
+                What should happen when previous queue is resolved after context cancellation?
+                1. check cancellation and resolve with Cancellation object
+                
+                Cancellation cancellation cancellation... processing cancellation is too hard then. (if queue chain ever uses arguments)
+                - fixed by behaviorOnCancellation: "pass"
+                - still too long, should it be default value for queue items?
+                - okay, make it default
+                */
+                if (this.context.canceled && !this._cancellationAwared) {
+                    value = cancellation;
+                    output._cancellationAwared = true;
                     /*
-                    What should happen when previous queue is resolved after context cancellation?
-                    1. check cancellation and resolve with Cancellation object
-                    
-                    Cancellation cancellation cancellation... processing cancellation is too hard then. (if queue chain ever uses arguments)
-                    - fixed by behaviorOnCancellation: "pass"
-                    - still too long, should it be default value for queue items?
-                    - okay, make it default
+                    TODO: use cancellationAwaredKey so that Cancellation passes only until first behaviorOnCancellation: "none"
+                    The key should not on context as it can contain multiple parallel chains
+                    Can it be on AsyncQueueConstructorOptionBag? No, construction occurs before cancellation
+                    super.then is always asynchronous so `output` is always already obtained
                     */
-                    if (this.context.canceled && !this._cancellationAwared) {
-                        value = cancellation;
-                        output._cancellationAwared = true;
-                        /*
-                        TODO: use cancellationAwaredKey so that Cancellation passes only until first behaviorOnCancellation: "none"
-                        The key should not on context as it can contain multiple parallel chains
-                        Can it be on AsyncQueueConstructorOptionBag? No, construction occurs before cancellation
-                        super.then is always asynchronous so `output` is always already obtained
-                        */
+                }
+                if (value === cancellation) {
+                    if (options.behaviorOnCancellation === "silent") {
+                        return new Promise(() => { }); // never resolve
                     }
-                    if (value === cancellation) {
-                        if (options.behaviorOnCancellation === "silent") {
-                            return; // never resolve
-                        }
-                        else if (options.behaviorOnCancellation === "pass") {
-                            resolve(cancellation);
-                            return; // never call onfulfilled
-                            /*
-                            TODO: This blocks await expression from receiving Cancellation
-                            proposal: make .queue as syntax sugar for .then(, { behaviorOnCancellation: "pass" })
-                            and set the default value as "none" for .then
-                            
-                            TODO: awaiter uses .then(onfulfill, onreject) but queue item doesn't use this
-                            .then(onfullfill, onreject, options)
-                            .queue(onfulfill, options)
-                            .catch(onfulfill, options)
-                            better name for .queue()? just make it queue as it have
-                            different default behaviorOnCancellation value
-                            */
-                        }
+                    else if (options.behaviorOnCancellation === "pass") {
+                        return cancellation; // never call onfulfilled
                     }
+                }
+                let result: U | PromiseLike<U>;
+                try {
                     if (typeof onfulfilled === "function") {
-                        promise = Promise.resolve().then(() => onfulfilled(value)); // gracely reject when fail
+                        result = onfulfilled(value);
                     }
-                    Promise.resolve(promise).then(resolve, reject);
-                    // resolve should be called only when full promise chain is resolved
-                    // so that .revert can only be called when all is over 
-                };
+                }
+                catch (e) {
+                    result = Promise.reject(e) as Promise<any>;
+                }
+                return result;
+                // resolve should be called only when full promise chain is resolved
+                // so that .revert can only be called when all is over 
+            };
 
-                super.then(
-                    (value) => {
-                        this.context._queue.push(output);
-                        resolveWithCancellationCheck(value);
-                    },
-                    (error) => {
-                        this.context._queue.push(output);
+            let output = super.then(
+                (value) => {
+                    this.context._queue.push(output);
+                    return resolver = resolveWithCancellationCheck(value);
+                },
+                (error) => {
+                    this.context._queue.push(output);
 
-                        if (this.context.canceled) {
-                            resolveWithCancellationCheck();
-                            return; // no onrejected call when canceled
-                        }
+                    if (this.context.canceled) {
+                        return resolveWithCancellationCheck();
+                        // no onrejected call when canceled
+                    }
+                    
+                    let result: U | PromiseLike<U>;
+                    try {
                         if (typeof onrejected === "function") {
-                            promise = Promise.resolve().then(() => onrejected(error));
+                            result = onrejected(error);
                         }
-                        Promise.resolve(promise).then(resolve, reject);
                     }
-                )
-            }, {
-                    revert: (status) => {
-                        let sequence = Promise.resolve();
-                        if (status === "canceled" && promise && typeof promise[cancelSymbol] === "function") {
-                            sequence = sequence.then(() => (<Cancellable<U>>promise)[cancelSymbol]());
-                        }
-                        sequence = sequence.then(() => this.context._removeFromQueue(output));
-                        if (options.revert) {
-                            sequence = sequence.then(() => options.revert(status));
-                        }
-                        return sequence;
-                    },
-                    context: this.context
-                });
+                    catch (e) {
+                        result = Promise.reject(e) as Promise<any>;
+                    }
+                    return resolver = result;
+                }
+            ) as AsyncQueueItem<U>;
+            
+            // options assignation always happens before output resolves
+            /*
+            let promise; // resolved promise
+            promise.then(() => console.log("resolved"));
+            console.log("console");
+            output: console, resolved
+            */
+            output._internal.options = {
+                revert: (status) => {
+                    let sequence = Promise.resolve();
+                    if (status === "canceled" && resolver && typeof resolver[cancelSymbol] === "function") {
+                        sequence = sequence.then(() => (resolver as Cancellable<U>)[cancelSymbol]());
+                    }
+                    sequence = sequence.then(() => this.context._removeFromQueue(output));
+                    if (options.revert) {
+                        sequence = sequence.then(() => options.revert(status));
+                    }
+                    return sequence;
+                }
+            };
+            output._context = this.context
             return output;
         }
 
