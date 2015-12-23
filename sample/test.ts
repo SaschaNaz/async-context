@@ -19,9 +19,9 @@ declare var error6Run: HTMLInputElement;
 declare var error7Run: HTMLInputElement;
 declare var error8Run: HTMLInputElement;
 
-import AsyncContext = AsyncChainer.AsyncContext;
-import AsyncFeed = AsyncChainer.AsyncFeed;
-import Contract = AsyncChainer.Contract;
+import AsyncContext = Cancellables.AsyncContext;
+import AsyncFeed = Cancellables.AsyncFeed;
+import Contract = Cancellables.Cancellable;
 
 function waitFor(millisecond: number) {
     return new AsyncFeed((resolve, reject) => {
@@ -104,7 +104,7 @@ waitEvent(document, "DOMContentLoaded").then(() => {
         let awaitWaiter = function awaitWaiter() {
             return new AsyncContext<boolean>(async (context) => {
                 let result = await context.queue(() => waitFor(3000)).queue((value) => {
-                    return value === AsyncChainer.Cancellation ? "cancel" : "uncancel";
+                    return value === Cancellables.cancellation ? "cancel" : "uncancel";
                 }, { behaviorOnCancellation: "none" });
                 
                 if (result !== "cancel") {
@@ -130,7 +130,7 @@ waitEvent(document, "DOMContentLoaded").then(() => {
             return new AsyncContext<boolean>(async (context) => {
                 let result = await context.queue(() => waitFor(3000));
                 
-                if (result !== AsyncChainer.Cancellation) {
+                if (result !== Cancellables.cancellation) {
                     context.resolve(false);
                 }
                 else {
@@ -155,7 +155,7 @@ waitEvent(document, "DOMContentLoaded").then(() => {
                 
                 let result = await context.queue(() => Promise.resolve());  
                 
-                if (result !== AsyncChainer.Cancellation) {
+                if (result !== Cancellables.cancellation) {
                     context.resolve(false);
                 }
                 else {

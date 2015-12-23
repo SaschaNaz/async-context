@@ -73,45 +73,52 @@ namespace Cancellables {
         confirmCancellation: () => Promise<void>;
     }
 
-    export class Cancellable<T> extends Promise<T> {
-        get canceled() { return this._canceled }
-        _canceled: boolean;
-        _modifiable: boolean;
+    export interface CancellableInternal {
+        canceled: boolean;
+        modifiable: boolean;
 
-        _resolve: <T>(value?: T | PromiseLike<T>) => void;
-        _reject: (reason?: any) => void;
-        _revert: (status: string) => any;
-        
-        _options: CancellableOptionBag;
+        resolve: <T>(value?: T | PromiseLike<T>) => void;
+        reject: (reason?: any) => void;
+        revert: (status: string) => any;
+
+        options: CancellableOptionBag;
+    }
+
+    export class Cancellable<T> extends Promise<T> {
+        get canceled() { return this._internal.canceled }
+
+        _internal: CancellableInternal;
 
         constructor(init: (resolve: (value?: T | PromiseLike<T>) => Promise<void>, reject: (reason?: any) => Promise<void>, controller: CancellableController) => void, options?: CancellableOptionBag) {
             options = util.assign<CancellableOptionBag>({}, options); // pass cancellation by default
             let revert = options.revert;
-            let newThis = this; // only before getting real newThis
-            let controller: CancellableController = {
-                get canceled() { return newThis._canceled },
-                confirmCancellation: () => {
-                    this._options.deferCancellation = false;
-                    this._canceled = true;
-                    return this._resolveCancel();
-                }
-            }
 
-            let listener = (resolve: (value?: T | PromiseLike<T>) => void, reject: (error?: any) => void) => {
-                this._resolve = resolve; // newThis is unavailable at construction
-                this._reject = reject;
-                this._revert = revert;
-                this._modifiable = true;
-                this._canceled = false;
-                this._options = options;
+            let internal = {} as CancellableInternal;
+
+            super((resolve: (value?: T | PromiseLike<T>) => void, reject: (error?: any) => void) => {
+                internal.resolve = resolve; // newThis is unavailable at construction
+                internal.reject = reject;
+                internal.revert = revert;
+                internal.modifiable = true;
+                internal.canceled = false;
+                internal.options = options;
+
+                let controller: CancellableController = {
+                    get canceled() { return this._canceled },
+                    confirmCancellation: () => {
+                        internal.options.deferCancellation = false;
+                        internal.canceled = true;
+                        return this._resolveCancel();
+                    }
+                }
 
                 try {
                     init(
                         (value) => {
-                            if (!newThis._modifiable) {
+                            if (!internal.modifiable) {
                                 return;
                             }
-                            newThis._modifiable = false; // newThis may not be obtained yet but every assignation will be reassigned after obtaining
+                            internal.modifiable = false; // newThis may not be obtained yet but every assignation will be reassigned after obtaining
                             let sequence = Promise.resolve();
                             if (revert) {
                                 sequence = sequence.then(() => revert("resolved"));
@@ -119,10 +126,10 @@ namespace Cancellables {
                             return sequence.then(() => resolve(value)).catch((error) => reject(error)); // reject when revert failed
                         },
                         (error) => {
-                            if (!newThis._modifiable) {
+                            if (!internal.modifiable) {
                                 return;
                             }
-                            newThis._modifiable = false;
+                            internal.modifiable = false;
                             let sequence = Promise.resolve();
                             if (revert) {
                                 sequence = sequence.then(() => revert("rejected"));
@@ -136,24 +143,10 @@ namespace Cancellables {
                     // error when calling init
                     reject(error);
                 }
-            };
+            });
 
-            newThis = window.SubclassJ ? SubclassJ.getNewThis(Cancellable, Promise, [listener]) : this;
-            if (!window.SubclassJ) {
-                super(listener);
-            }
 
-            newThis._resolve = this._resolve;
-            newThis._reject = this._reject;
-
-            // guarantee every assignation before obtaining newThis be applied on it
-            newThis._revert = this._revert;
-            newThis._modifiable = this._modifiable;
-            newThis._canceled = this._canceled;
-            newThis._options = this._options;
-
-            return newThis;
-            //super(listener);
+            this._internal = internal;
         }
 
         /*
@@ -175,16 +168,16 @@ namespace Cancellables {
         */
 
         [cancelSymbol]() {
-            if (!this._modifiable || this._canceled) {
+            if (!this._internal.modifiable || this._internal.canceled) {
                 return Promise.reject(new Error("Already locked"));
             }
-            this._canceled = true;
+            this._internal.canceled = true;
             let sequence = Promise.resolve();
-            if (this._options.precancel) {
-                sequence = sequence.then(() => this._options.precancel());
+            if (this._internal.options.precancel) {
+                sequence = sequence.then(() => this._internal.options.precancel());
                 // precancel error should be catched by .cancel().catch()
             }
-            if (!this._options.deferCancellation) {
+            if (!this._internal.options.deferCancellation) {
                 return sequence.then(() => this._resolveCancel());
             }
             else {
@@ -198,12 +191,12 @@ namespace Cancellables {
         }
 
         _resolveCancel() {
-            this._modifiable = false;
+            this._internal.modifiable = false;
             let sequence = Promise.resolve();
-            if (this._revert) {
-                sequence = sequence.then(() => this._revert("canceled"));
+            if (this._internal.revert) {
+                sequence = sequence.then(() => this._internal.revert("canceled"));
             }
-            return sequence.then(() => this._resolve(cancellation)).catch((error) => this._reject(error));
+            return sequence.then(() => this._internal.resolve(cancellation)).catch((error) => this._internal.reject(error));
             // won't resolve with Cancellation when already resolved 
         }
     }
@@ -211,11 +204,11 @@ namespace Cancellables {
     export class AsyncContext<T> {
         _canceled: boolean;
         _modifiable: boolean;
-        
+
         _queue: AsyncQueueItem<any>[];
         _feeder: AsyncFeed<T>;
         _feederController: CancellableController;
-        
+
         _resolveFeeder: <T>(value?: T | PromiseLike<T>) => Promise<void>;
         _rejectFeeder: (reason?: any) => Promise<void>;
 
@@ -261,7 +254,7 @@ namespace Cancellables {
 
         _cancelAll() {
             return Promise.all(this._queue.map((item) => {
-                if (item._modifiable && !item._canceled) {
+                if (item._internal.modifiable && !item._internal.canceled) {
                     return item[cancelSymbol]() as Promise<void>
                 }
             })).then<void>();
@@ -304,7 +297,7 @@ namespace Cancellables {
         }
 
         get canceled() {
-            return this._feeder._canceled || this._canceled;
+            return this._feeder._internal.canceled || this._canceled;
         }
 
         resolve(value?: T): Promise<void> {
@@ -336,17 +329,14 @@ namespace Cancellables {
         _cancellationAwared: boolean;
 
         constructor(init: (resolve: (value?: T | PromiseLike<T>) => void, reject: (reason?: any) => void) => void, options: AsyncQueueConstructionOptionBag) {
+            /* TODO: A Promise subclass must allow constructing only with `init` parameter */
             if (!(options.context instanceof AsyncContext)) {
                 throw new Error("An AsyncContext object must be given by `options.context`.");
             }
-            let newThis = window.SubclassJ ? SubclassJ.getNewThis(AsyncQueueItem, Cancellable, [init, options]) : this;
-            if (!window.SubclassJ) {
-                super(init, options);
-            }
+            super(init, options);
 
-            newThis._context = this._context = options.context;
-            newThis._cancellationAwared = this._cancellationAwared = false;
-            return newThis;
+            this._context = options.context;
+            this._cancellationAwared = false;
         }
 
         queue<U>(onfulfilled?: (value: T) => U | PromiseLike<U>, options?: AsyncQueueOptionBag) {
@@ -424,7 +414,8 @@ namespace Cancellables {
                             promise = Promise.resolve().then(() => onrejected(error));
                         }
                         Promise.resolve(promise).then(resolve, reject);
-                    })
+                    }
+                )
             }, {
                     revert: (status) => {
                         let sequence = Promise.resolve();
@@ -449,13 +440,6 @@ namespace Cancellables {
 
     // better name? this can be used when a single contract only is needed
     export class AsyncFeed<T> extends Cancellable<T> {
-        constructor(init: (resolve: (value?: T | PromiseLike<T>) => Promise<void>, reject: (reason?: any) => Promise<void>, controller: CancellableController) => void, options: CancellableOptionBag) {
-            let newThis = window.SubclassJ ? SubclassJ.getNewThis(AsyncFeed, Cancellable, [init, options]) : this;
-            if (!window.SubclassJ) {
-                super(init, options);
-            }
-            return newThis;
-        }
         cancel(): Promise<void> {
             return this[cancelSymbol]();
         }
