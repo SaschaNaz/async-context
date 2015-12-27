@@ -40,16 +40,16 @@ task("sample", function () {
 desc("local");
 task("local", function () {
     jake.exec(["tsc"], jakeExecOptionBag, function () {
-        var ts = "built/async-context.js";
-        var tsContents = fs.readFileSync("built/async-context.js");
-        fs.writeFileSync("built/async-context-modular.js", tsContents + `
+        var ts = "built/cancellables.js";
+        var tsContents = fs.readFileSync("built/cancellables.js");
+        fs.writeFileSync("built/cancellables-modular.js", tsContents + `
 if (typeof module !== "undefined" && module.exports) {
-    module.exports.default = AsyncChainer;
+    module.exports.default = Cancellables;
 }`);
         
-        var dts = "built/async-context.d.ts";
-        var dtsContents = fs.readFileSync("built/async-context.d.ts");
-        fs.writeFileSync("built/async-context-modular.d.ts", dtsContents + "\r\nexport default AsyncChainer;");
+        var dts = "built/cancellables.d.ts";
+        var dtsContents = fs.readFileSync("built/cancellables.d.ts");
+        fs.writeFileSync("built/cancellables-modular.d.ts", dtsContents + "\r\nexport default Cancellables;");
         complete();
     })
 }, jakeAsyncTaskOptionBag);

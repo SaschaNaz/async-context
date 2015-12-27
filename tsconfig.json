@@ -6,10 +6,9 @@
         "sourceMap": true,
         "declaration": true,
         "stripInternal": true,
-        "out": "built/async-context.js"
+        "out": "built/cancellables.js"
     },
     "files": [
-        "submodules/subclassj/subclassj.d.ts",
-        "sources/async-context.ts"
+        "sources/cancellables.ts"
     ]
 }

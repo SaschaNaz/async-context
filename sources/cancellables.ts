@@ -201,23 +201,23 @@ namespace Cancellables {
         }
     }
 
-    export class AsyncContext<T> {
+    export class CancellableContext<T> {
         _canceled: boolean;
         _modifiable: boolean;
 
         _queue: AsyncQueueItem<any>[];
-        _feeder: AsyncFeed<T>;
+        _feeder: CancellableFeed<T>;
         _feederController: CancellableController;
 
         _resolveFeeder: <T>(value?: T | PromiseLike<T>) => Promise<void>;
         _rejectFeeder: (reason?: any) => Promise<void>;
 
-        constructor(callback: (context: AsyncContext<T>) => any, options?: CancellableOptionBag) {
+        constructor(callback: (context: CancellableContext<T>) => any, options?: CancellableOptionBag) {
             options = util.assign<CancellableOptionBag>({}, options);
             this._queue = [];
             this._modifiable = true;
             this._canceled = false;
-            this._feeder = new AsyncFeed<T>((resolve, reject, controller) => {
+            this._feeder = new CancellableFeed<T>((resolve, reject, controller) => {
                 this._resolveFeeder = resolve;
                 this._rejectFeeder = reject;
                 this._feederController = controller;
@@ -315,7 +315,7 @@ namespace Cancellables {
     }
 
     export interface AsyncQueueConstructionOptionBag extends CancellableOptionBag {
-        context: AsyncContext<any>;
+        context: CancellableContext<any>;
     }
 
     export interface AsyncQueueOptionBag extends CancellableOptionBag {
@@ -325,13 +325,13 @@ namespace Cancellables {
     // Can chaining characteristics of AsyncQueueItem be used generally? 
     export class AsyncQueueItem<T> extends Cancellable<T> {
         get context() { return this._context }
-        _context: AsyncContext<any>;
+        _context: CancellableContext<any>;
         _cancellationAwared: boolean;
 
         constructor(init: (resolve: (value?: T | PromiseLike<T>) => void, reject: (reason?: any) => void) => void, options: AsyncQueueConstructionOptionBag) {
             // A Promise subclass must allow constructing only with `init` parameter
             // Then `options` must be set after construction to correctly indicate the context
-            if (options && !(options.context instanceof AsyncContext)) {
+            if (options && !(options.context instanceof CancellableContext)) {
                 throw new Error("An AsyncContext object must be given by `options.context`.");
             }
             super(init, options);
@@ -449,7 +449,7 @@ namespace Cancellables {
     }
 
     // better name? this can be used when a single contract only is needed
-    export class AsyncFeed<T> extends Cancellable<T> {
+    export class CancellableFeed<T> extends Cancellable<T> {
         cancel(): Promise<void> {
             return this[cancelSymbol]();
         }
