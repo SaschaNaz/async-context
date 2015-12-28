@@ -1,12 +1,12 @@
 {
     "compilerOptions": {
-        "target": "ES6",
+        "target": "es6",
         "module": "commonjs",
         "noImplicitAny": true,
         "sourceMap": true
     },
     "files": [
-        "../built/async-context.d.ts",
+        "../built/cancellables.d.ts",
         "test.ts"
     ]
 }

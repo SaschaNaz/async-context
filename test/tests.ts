@@ -1,29 +1,28 @@
-/// <reference path="../submodules/mocha.d.ts" />
-/// <reference path="../submodules/chai.d.ts" />
+/// <reference path="../declarations/mocha.d.ts" />
+/// <reference path="../declarations/chai.d.ts" />
 "use strict"
 import * as chai from "chai"
 
-import AsyncChainer from "../built/async-context-modular";
-import AsyncContext = AsyncChainer.AsyncContext;
-import AsyncFeed = AsyncChainer.AsyncFeed;
+import Cancellables from "../built/cancellables-modular";
+import CancellableContext = Cancellables.CancellableContext;
+import CancellableFeed = Cancellables.CancellableFeed;
 
-let logger: AsyncFeed<void>;
 let delayedLogger = function delayedLogger() {
-    return new AsyncContext<void>((context) => {
+    return new CancellableContext<void>((context) => {
         setTimeout(() => {
             context.resolve();
         }, 10000);
     }).feed();
 }
 
-describe("Waiting 10 seconds, with ES5", function () {
+describe("Waiting 10 seconds, with ES5", function() {
     it("should call done", function(done) {
         let now = Date.now();
-        logger = delayedLogger();
+        let logger = delayedLogger();
         logger.then((value) => {
-            chai.assert((Date.now() - now) > 9000); // at least 9 seconds 
+            chai.assert((Date.now() - now) > 9000); // at least 9 seconds
             done();
-        }); 
+        });
     });
     // No Proxy support on Node.js v4.2 which is required for async-chainer
     // Delay making mocha tests until they implement it
