@@ -4,6 +4,7 @@ built/
 **/*.d.ts
 **/.vscode/settings.json
 **/built/
+test-server/list.json
 
 !lib/
 
