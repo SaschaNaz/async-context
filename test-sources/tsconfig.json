@@ -3,6 +3,7 @@
         "target": "es6",
         "module": "system",
         "noImplicitAny": true,
-        "sourceMap": true
+        "sourceMap": true,
+		"outDir": "../test/"
     }
 }

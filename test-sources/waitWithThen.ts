@@ -7,7 +7,7 @@ import * as Cancellables from "../built/cancellables-modular";
 import CancellableContext = Cancellables.CancellableContext;
 
 let delayedLogger = function delayedLogger() {
-    return new CancellableContext<void>((context) => {
+    return new CancellableContext<void>(context => {
         setTimeout(() => {
             context.resolve();
         }, 100);
@@ -18,21 +18,15 @@ describe("Waiting 100 ms with .then()", function() {
     it("should call done", function(done) {
         let now = Date.now();
         let logger = delayedLogger();
-        logger.then((value) => {
-            chai.assert((Date.now() - now) > 90); // at least 90 ms
-            done();
-        });
+        logger.then(value => {
+            chai.assert((Date.now() - now) > 90, "at least 90 ms");
+        }).then(done, done);
     });
     it("should be canceled", function(done) {
         let logger = delayedLogger();
-        logger.then((value) => {
-            if (value === Cancellables.cancellation) {
-                done();
-            }
-            else {
-                done(new Error(`Expected \`cancellation\` but found ${value}`));
-            }
-        });
+        logger.then(value => {
+            chai.assert(value === Cancellables.cancellation, "Expected \`cancellation\`");
+        }).then(done, done);
         logger.cancel();
     })
 });

@@ -19,7 +19,9 @@ let server = new Server(path.resolve(__dirname, "../"), {
 	headers: { "Cache-Control": "no-store" }
 });
 
-console.log(`Server opened at: ${server.root}`);
+let port = process.argv[2] || 8080;
+
+console.log(`Server opened at: ${server.root}\r\nPort: ${port}`);
 
 http.createServer((request, response) => {
 	request.addListener("end", () => {
@@ -32,4 +34,4 @@ http.createServer((request, response) => {
 		});
 	});
 	request.resume();
-}).listen(8080);
+}).listen(port);
