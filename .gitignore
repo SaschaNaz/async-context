@@ -1,13 +1,11 @@
 built/
-sources/*.js
-sources/*.js.map
-sources/*.d.ts
-sample/*.js
-sample/*.js.map
+**/*.js
+**/*.js.map
+**/*.d.ts
 **/.vscode/settings.json
 **/built/
-test/*.js
-test/*.js.map
+
+!lib/
 
 node_modules/
 bower_components/
