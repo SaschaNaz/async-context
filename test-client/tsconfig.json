@@ -1,0 +1,15 @@
+{
+    "compilerOptions": {
+        "target": "es6",
+        "module": "system",
+        "noImplicitAny": true,
+        "sourceMap": true,
+        "out": "runtests.js"
+    },
+    "files": [
+        "../declarations/mocha.d.ts",
+        "../declarations/fetch.d.ts",
+        "../declarations/systemjs.d.ts",
+        "runtests.ts"
+    ]
+}

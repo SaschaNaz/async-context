@@ -8,4 +8,6 @@ sample/*.js.map
 **/built/
 test/*.js
 test/*.js.map
+
 node_modules/
+bower_components/

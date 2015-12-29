@@ -44,12 +44,12 @@ task("local", function () {
         var tsContents = fs.readFileSync("built/cancellables.js");
         fs.writeFileSync("built/cancellables-modular.js", tsContents + `
 if (typeof module !== "undefined" && module.exports) {
-    module.exports.default = Cancellables;
+    module.exports = Cancellables;
 }`);
         
         var dts = "built/cancellables.d.ts";
         var dtsContents = fs.readFileSync("built/cancellables.d.ts");
-        fs.writeFileSync("built/cancellables-modular.d.ts", dtsContents + "\r\nexport default Cancellables;");
+        fs.writeFileSync("built/cancellables-modular.d.ts", dtsContents + "\r\nexport = Cancellables;");
         complete();
     })
 }, jakeAsyncTaskOptionBag);

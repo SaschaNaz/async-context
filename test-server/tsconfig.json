@@ -1,0 +1,12 @@
+{
+    "compilerOptions": {
+        "target": "es5",
+        "module": "commonjs",
+        "noImplicitAny": true
+    },
+    "files": [
+        "fileserver.ts",
+        "../declarations/node-static.d.ts",
+        "../declarations/node.d.ts"
+    ]
+}

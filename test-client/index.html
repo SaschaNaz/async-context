@@ -1,0 +1,21 @@
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Mocha Tests</title>
+  <link href="../node_modules/mocha/mocha.css" rel="stylesheet" />
+  
+  <script src="../node_modules/mocha/mocha.js"></script>
+  <script>mocha.setup('bdd')</script>
+  
+  <script src="../bower_components/fetch/fetch.js"></script>
+  <script src="../bower_components/system.js/dist/system.js"></script>
+  <script>
+  System.defaultJSExtensions = true;
+  System.paths['chai'] = '../node_modules/chai/chai.js';
+  </script>
+  <script src="runtests.js"></script>
+</head>
+<body>
+  <div id="mocha"></div>
+</body>
+</html>
