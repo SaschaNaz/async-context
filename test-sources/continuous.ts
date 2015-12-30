@@ -20,7 +20,7 @@ function continuousLogger() {
     return new CancellableContext<number>((context) => {
         let feed = context.queue<void>();
         let connect = () => {
-            feed = feed.queue(() => waitFor(50)).queue(() => count++).queue(() => {
+            feed = feed.queue(() => count++).queue(() => {
                 if (!context.canceled) {
                     connect()
                 }
@@ -41,6 +41,6 @@ describe("Continuous logger", function() {
                 chai.assert(count > 3, "Count should be greater than 3");
             })
             .then(done, done);
-        waitFor(500).then(() => logger.cancel());
+        waitFor(300).then(() => logger.cancel());
     })
 });

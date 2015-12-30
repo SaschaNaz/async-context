@@ -171,12 +171,12 @@ namespace Cancellables {
             if (!this._internal.modifiable || this._internal.canceled) {
                 return Promise.reject(new Error("Already locked"));
             }
-            this._internal.canceled = true;
             let sequence = Promise.resolve();
             if (this._internal.options.precancel) {
                 sequence = sequence.then(() => this._internal.options.precancel());
                 // precancel error should be catched by .cancel().catch()
             }
+            sequence = sequence.then(() => { this._internal.canceled = true });
             if (!this._internal.options.deferCancellation) {
                 return sequence.then(() => this._resolveCancel());
             }
