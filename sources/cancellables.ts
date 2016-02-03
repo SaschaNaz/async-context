@@ -79,7 +79,6 @@ namespace Cancellables {
 
         resolve: <T>(value?: T | PromiseLike<T>) => void;
         reject: (reason?: any) => void;
-        revert: (status: string) => any;
 
         options: CancellableOptionBag;
     }
@@ -91,14 +90,13 @@ namespace Cancellables {
 
         constructor(init: (resolve: (value?: T | PromiseLike<T>) => Promise<void>, reject: (reason?: any) => Promise<void>, controller: CancellableController) => void, options?: CancellableOptionBag) {
             options = util.assign<CancellableOptionBag>({}, options); // pass cancellation by default
-            let revert = options.revert;
 
-            let internal = {} as CancellableInternal;
+             // unable to use `this` before super call completes so make a temp object instead            
+            let internal = {} as CancellableInternal; 
 
             super((resolve: (value?: T | PromiseLike<T>) => void, reject: (error?: any) => void) => {
                 internal.resolve = resolve; // newThis is unavailable at construction
                 internal.reject = reject;
-                internal.revert = revert;
                 internal.modifiable = true;
                 internal.canceled = false;
                 internal.options = options;
@@ -120,8 +118,8 @@ namespace Cancellables {
                             }
                             internal.modifiable = false; // newThis may not be obtained yet but every assignation will be reassigned after obtaining
                             let sequence = Promise.resolve();
-                            if (revert) {
-                                sequence = sequence.then(() => revert("resolved"));
+                            if (internal.options && internal.options.revert) {
+                                sequence = sequence.then(() => internal.options.revert("resolved"));
                             }
                             return sequence.then(() => resolve(value)).catch((error) => reject(error)); // reject when revert failed
                         },
@@ -131,8 +129,8 @@ namespace Cancellables {
                             }
                             internal.modifiable = false;
                             let sequence = Promise.resolve();
-                            if (revert) {
-                                sequence = sequence.then(() => revert("rejected"));
+                            if (internal.options && internal.options.revert) {
+                                sequence = sequence.then(() => internal.options.revert("rejected"));
                             }
                             return sequence.then(() => reject(error)).catch((error) => reject(error));
                         },
@@ -193,8 +191,8 @@ namespace Cancellables {
         _resolveCancel() {
             this._internal.modifiable = false;
             let sequence = Promise.resolve();
-            if (this._internal.revert) {
-                sequence = sequence.then(() => this._internal.revert("canceled"));
+            if (this._internal.options && this._internal.options.revert) {
+                sequence = sequence.then(() => this._internal.options.revert("canceled"));
             }
             return sequence.then(() => this._internal.resolve(cancellation)).catch((error) => this._internal.reject(error));
             // won't resolve with Cancellation when already resolved 

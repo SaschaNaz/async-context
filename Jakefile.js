@@ -11,14 +11,14 @@ var jakeAsyncTaskOptionBag = {
 
 desc("build-test");
 task("build-test", function () {
-    jake.exec(["tsc -p test"], jakeExecOptionBag, function () {
+    jake.exec(["tsc -p test-sources"], jakeExecOptionBag, function () {
         complete();
     });
 }, jakeAsyncTaskOptionBag);
 
-desc("build-testutil");
-task("build-testutil", function () {
-    jake.exec(["tsc -p testutil"], jakeExecOptionBag, function () {
+desc("build-testserver");
+task("build-testserver", function () {
+    jake.exec(["tsc -p test-server"], jakeExecOptionBag, function () {
         complete();
     });
 }, jakeAsyncTaskOptionBag);
@@ -54,6 +54,6 @@ if (typeof module !== "undefined" && module.exports) {
     })
 }, jakeAsyncTaskOptionBag);
 
-task("default", ["local", "build-test", "build-testutil", "sample"], function () {
+task("default", ["local", "build-test", "build-testserver"], function () {
 
 });
