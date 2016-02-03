@@ -16,7 +16,6 @@ declare namespace Cancellables {
         modifiable: boolean;
         resolve: <T>(value?: T | PromiseLike<T>) => void;
         reject: (reason?: any) => void;
-        revert: (status: string) => any;
         options: CancellableOptionBag;
     }
     class Cancellable<T> extends Promise<T> {
@@ -25,42 +24,40 @@ declare namespace Cancellables {
         constructor(init: (resolve: (value?: T | PromiseLike<T>) => Promise<void>, reject: (reason?: any) => Promise<void>, controller: CancellableController) => void, options?: CancellableOptionBag);
         _resolveCancel(): Promise<void>;
     }
-    class AsyncContext<T> {
+    class CancellableContext<T> {
         _canceled: boolean;
         _modifiable: boolean;
         _queue: AsyncQueueItem<any>[];
-        _feeder: AsyncFeed<T>;
+        _feeder: CancellableFeed<T>;
         _feederController: CancellableController;
         _resolveFeeder: <T>(value?: T | PromiseLike<T>) => Promise<void>;
         _rejectFeeder: (reason?: any) => Promise<void>;
-        constructor(callback: (context: AsyncContext<T>) => any, options?: CancellableOptionBag);
+        constructor(callback: (context: CancellableContext<T>) => any, options?: CancellableOptionBag);
         _cancelAll(): Promise<void>;
         queue<U>(callback?: () => U | PromiseLike<U>, options?: CancellableOptionBag): AsyncQueueItem<U>;
         _removeFromQueue(item: AsyncQueueItem<any>): void;
-        feed(): AsyncFeed<T>;
+        feed(): CancellableFeed<T>;
         canceled: boolean;
         resolve(value?: T): Promise<void>;
         reject(error?: any): Promise<void>;
         cancel(): Promise<void>;
     }
     interface AsyncQueueConstructionOptionBag extends CancellableOptionBag {
-        context: AsyncContext<any>;
+        context: CancellableContext<any>;
     }
     interface AsyncQueueOptionBag extends CancellableOptionBag {
         behaviorOnCancellation?: string;
     }
     class AsyncQueueItem<T> extends Cancellable<T> {
-        context: AsyncContext<any>;
-        _context: AsyncContext<any>;
+        context: CancellableContext<any>;
+        _context: CancellableContext<any>;
         _cancellationAwared: boolean;
         constructor(init: (resolve: (value?: T | PromiseLike<T>) => void, reject: (reason?: any) => void) => void, options: AsyncQueueConstructionOptionBag);
         queue<U>(onfulfilled?: (value: T) => U | PromiseLike<U>, options?: AsyncQueueOptionBag): AsyncQueueItem<U>;
         then<U>(onfulfilled?: (value: T) => U | PromiseLike<U>, onrejected?: (error: any) => U | PromiseLike<U>, options?: AsyncQueueOptionBag): AsyncQueueItem<U>;
         catch<U>(onrejected?: (error: any) => U | PromiseLike<U>, options?: CancellableOptionBag): AsyncQueueItem<U>;
     }
-    class AsyncFeed<T> extends Cancellable<T> {
+    class CancellableFeed<T> extends Cancellable<T> {
         cancel(): Promise<void>;
     }
 }
-
-export default AsyncChainer;

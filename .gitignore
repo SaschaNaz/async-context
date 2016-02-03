@@ -6,7 +6,7 @@ built/
 **/built/
 test-server/list.json
 
-!lib/
+!lib/*
 
 node_modules/
 bower_components/
