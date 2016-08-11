@@ -6,7 +6,9 @@
         {
             "name": "Launch test file server",
             "type": "node",
-            "program": "../test/fileserver.js"
+            "request": "launch",
+            "cwd": "${workspaceRoot}",
+            "program": "${workspaceRoot}/test-server/fileserver.js"
         }
     ]
 }
