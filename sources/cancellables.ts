@@ -1,19 +1,4 @@
 namespace Cancellables {
-    namespace util {
-        export function assign<T>(target: T, ...sources: any[]) {
-            if ((<any>Object).assign)
-                return <T>((<any>Object).assign)(target, ...sources);
-
-            for (let source of sources) {
-                source = Object(source);
-                for (let property in source) {
-                    (<any>target)[property] = source[property];
-                }
-            }
-            return target;
-        }
-    }
-
     export var cancellation: any = new Proxy(() => { }, {
         set: () => false,
         get: (target: any, property: any) => property !== "then" ? cancellation : undefined, // non-PromiseLike 
@@ -22,36 +7,6 @@ namespace Cancellables {
     });
 
     export var cancelSymbol = Symbol("cancel");
-
-    //     /*
-    //         Keys for Contract class 
-    //     */
-    //     let resolveKey = generateSymbolKey("resolve");
-    //     let rejectKey = generateSymbolKey("reject");
-    //     let cancelKey = generateSymbolKey("cancel");
-    //     let resolveCancelKey = generateSymbolKey("cancel-resolve");
-    //     let modifiableKey = generateSymbolKey("modifiable");
-    //     let revertKey = generateSymbolKey("revert");
-    //     let canceledKey = generateSymbolKey("canceled");
-    //     let thisKey = generateSymbolKey("this");
-    //     let optionsKey = generateSymbolKey("options");
-    // 
-    //     /*
-    //         Keys for AsyncContext
-    //     */
-    //     let feederKey = generateSymbolKey("feeder");
-    //     let resolveFeederKey = generateSymbolKey("resolve-feeder");
-    //     let rejectFeederKey = generateSymbolKey("reject-feeder");
-    //     let feederControllerKey = generateSymbolKey("feeder-controller")
-    //     let queueKey = generateSymbolKey("queue");
-    //     let cancelAllKey = generateSymbolKey("cancel-all")
-    //     let removeFromQueueKey = generateSymbolKey("remove-from-queue");
-    // 
-    //     /*
-    //         Keys for AsyncQueueItem
-    //     */
-    //     let contextKey = generateSymbolKey("context");
-    //     let cancellationAwaredKey = generateSymbolKey("cancellation-awared")
 
     export interface CancellableOptionBag {
         /** Reverting listener for a contract. This will always be called after a contract gets finished in any status. */
@@ -89,7 +44,7 @@ namespace Cancellables {
         _internal: CancellableInternal;
 
         constructor(init: (resolve: (value?: T | PromiseLike<T>) => Promise<void>, reject: (reason?: any) => Promise<void>, controller: CancellableController) => void, options?: CancellableOptionBag) {
-            options = util.assign<CancellableOptionBag>({}, options); // pass cancellation by default
+            options = Object.assign({}, options); // pass cancellation by default
 
              // unable to use `this` before super call completes so make a temp object instead            
             let internal = {} as CancellableInternal; 
@@ -211,7 +166,7 @@ namespace Cancellables {
         _rejectFeeder: (reason?: any) => Promise<void>;
 
         constructor(callback: (context: CancellableContext<T>) => any, options?: CancellableOptionBag) {
-            options = util.assign<CancellableOptionBag>({}, options);
+            options = Object.assign({}, options);
             this._queue = [];
             this._modifiable = true;
             this._canceled = false;
@@ -340,12 +295,12 @@ namespace Cancellables {
         }
 
         queue<U>(onfulfilled?: (value: T) => U | PromiseLike<U>, options?: AsyncQueueOptionBag) {
-            options = util.assign<any>({ behaviorOnCancellation: "pass" }, options);
+            options = Object.assign({ behaviorOnCancellation: "pass" }, options);
             return this.then(onfulfilled, undefined, options);
         }
 
         then<U>(onfulfilled?: (value: T) => U | PromiseLike<U>, onrejected?: (error: any) => U | PromiseLike<U>, options?: AsyncQueueOptionBag): AsyncQueueItem<U> {
-            options = util.assign<any>({ behaviorOnCancellation: "none" }, options);
+            options = Object.assign({ behaviorOnCancellation: "none" }, options);
             
             let resolver: U | PromiseLike<U>;
 
