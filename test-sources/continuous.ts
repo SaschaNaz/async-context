@@ -20,7 +20,7 @@ function continuousLogger() {
     return new CancellableContext<number>((context) => {
         let feed = context.queue<void>();
         let connect = () => {
-            feed = feed.queue(() => count++).queue(() => {
+            feed = feed.queue(() => count++).queue(() => waitFor(0)).queue(() => {
                 if (!context.canceled) {
                     connect()
                 }
